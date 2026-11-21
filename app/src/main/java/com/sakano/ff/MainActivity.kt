@@ -167,7 +167,35 @@ class MainActivity : Activity() {
 
         panel.addView(label("STATUS DO GRAVADOR", 11f, MUTED, true))
         spaceIn(panel, 12)
-        panel.addView(label("Pronto para gravar", 22f, WHITE, true))
+        val recordingStatus = prefs.getString(
+            "recording_status",
+            "Pronto"
+        ) ?: "Pronto"
+
+        val statusText = when (recordingStatus) {
+            "Gravando" -> "●  Gravando agora"
+            "Preparando" -> "Preparando gravação..."
+            "Finalizando" -> "Finalizando vídeo..."
+            "Erro" -> "Falha na gravação"
+            else -> "Pronto para gravar"
+        }
+
+        val statusColor = if (recordingStatus == "Gravando") {
+            Color.rgb(60, 210, 110)
+        } else if (recordingStatus == "Erro") {
+            RED
+        } else {
+            WHITE
+        }
+
+        panel.addView(label(statusText, 22f, statusColor, true))
+
+        if (recordingStatus == "Erro") {
+            val error = prefs.getString("recording_error", "") ?: ""
+            if (error.isNotBlank()) {
+                panel.addView(label(error, 12f, RED))
+            }
+        }
         panel.addView(label(
             "Seus vídeos serão salvos na galeria do celular.",
             12f, MUTED
@@ -277,6 +305,11 @@ class MainActivity : Activity() {
     }
 
     private fun launchProjection() {
+        prefs.edit()
+            .putString("recording_status", "Preparando")
+            .putString("recording_error", "")
+            .apply()
+
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE)
             as MediaProjectionManager
 
@@ -316,6 +349,10 @@ class MainActivity : Activity() {
                     Toast.LENGTH_SHORT
                 ).show()
             } else {
+                prefs.edit()
+                    .putString("recording_status", "Pronto")
+                    .apply()
+
                 Toast.makeText(
                     this,
                     "Gravação cancelada.",
@@ -638,8 +675,15 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+
         if (currentPage == "Seus Vídeos") {
             showVideos()
+        } else if (currentPage == "home") {
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!isFinishing && currentPage == "home") {
+                    showHome()
+                }
+            }, 1200)
         }
     }
 }
