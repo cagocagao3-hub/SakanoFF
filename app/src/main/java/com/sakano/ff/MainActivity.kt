@@ -559,10 +559,15 @@ class MainActivity : Activity() {
             setImageResource(drawableId)
             contentDescription = description
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(18, 18, 18, 18)
+            setPadding(14, 14, 14, 14)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(tint)
+                if (description == "Instagram") {
+                    colors = intArrayOf(Color.rgb(131, 58, 180), Color.rgb(225, 48, 108), Color.rgb(252, 175, 69))
+                    orientation = GradientDrawable.Orientation.TL_BR
+                } else {
+                    setColor(tint)
+                }
                 setStroke(1, Color.rgb(66, 73, 88))
             }
             isClickable = true
@@ -573,7 +578,7 @@ class MainActivity : Activity() {
                 catch (_: Exception) { Toast.makeText(this@MainActivity, "Não foi possível abrir o link.", Toast.LENGTH_SHORT).show() }
             }
         }
-        val lp = LinearLayout.LayoutParams(62, 62).apply { leftMargin = 13; rightMargin = 13 }
+        val lp = LinearLayout.LayoutParams(82, 82).apply { leftMargin = 16; rightMargin = 16 }
         socialIconsRow?.addView(icon, lp)
     }
 
@@ -583,7 +588,7 @@ class MainActivity : Activity() {
         startPage("about", "Sobre o Sakano FF")
         val hero = card().apply {
             setPadding(20, 22, 20, 22)
-            addView(label("SAKANO FF 3.7", 22f, white, true))
+            addView(label("SAKANO FF 3.8", 22f, white, true))
             space(this, 7)
             addView(label("GRAVADOR LEVE PARA CELULARES DE ENTRADA", 10f, red, true))
             space(this, 13)
