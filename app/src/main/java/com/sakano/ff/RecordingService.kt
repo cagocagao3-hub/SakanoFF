@@ -108,8 +108,10 @@ class RecordingService : Service() {
             startForeground(NOTIFICATION_ID, notification())
         }
 
-        val code = intent?.getIntExtra("code", Activity.RESULT_CANCELED)
-            ?: Activity.RESULT_CANCELED
+        val code = intent?.getIntExtra(
+            "code",
+            Activity.RESULT_CANCELED
+        ) ?: Activity.RESULT_CANCELED
 
         @Suppress("DEPRECATION")
         val data = if (Build.VERSION.SDK_INT >= 33) {
@@ -124,8 +126,8 @@ class RecordingService : Service() {
         }
 
         try {
-            val resolution = intent.getIntExtra("resolution", 720)
-            val fps = intent.getIntExtra("fps", 30)
+            val resolution = intent?.getIntExtra("resolution", 720) ?: 720
+            val fps = intent?.getIntExtra("fps", 30) ?: 30
 
             startRecording(code, data, resolution, fps)
         } catch (e: Exception) {

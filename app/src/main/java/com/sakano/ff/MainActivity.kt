@@ -78,8 +78,8 @@ class MainActivity : Activity() {
 
     private fun actionButton(
         title: String,
-        action: () -> Unit,
-        secondary: Boolean = false
+        secondary: Boolean = false,
+        action: () -> Unit
     ): Button {
         return Button(this).apply {
             text = title
@@ -183,11 +183,10 @@ class MainActivity : Activity() {
 
         panel.addView(actionButton(
             "■   PARAR GRAVAÇÃO",
-            {
-                stopRecording()
-            },
             true
-        ))
+        ) {
+            stopRecording()
+        })
 
         space(20)
 
@@ -605,32 +604,31 @@ class MainActivity : Activity() {
 
             panel.addView(actionButton(
                 "EXCLUIR VÍDEO",
-                {
-                    AlertDialog.Builder(this)
-                        .setTitle("Excluir vídeo?")
-                        .setMessage(video.name)
-                        .setNegativeButton("Cancelar", null)
-                        .setPositiveButton("Excluir") { _, _ ->
-                            try {
-                                contentResolver.delete(video.uri, null, null)
-                                Toast.makeText(
-                                    this,
-                                    "Vídeo excluído.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                showVideos()
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    this,
-                                    "Não foi possível excluir o vídeo.",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
-                        .show()
-                },
                 true
-            ))
+            ) {
+                AlertDialog.Builder(this)
+                    .setTitle("Excluir vídeo?")
+                    .setMessage(video.name)
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Excluir") { _, _ ->
+                        try {
+                            contentResolver.delete(video.uri, null, null)
+                            Toast.makeText(
+                                this,
+                                "Vídeo excluído.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            showVideos()
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                this,
+                                "Não foi possível excluir o vídeo.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                    .show()
+            })
 
             val params = LinearLayout.LayoutParams(-1, -2)
             params.bottomMargin = 14
