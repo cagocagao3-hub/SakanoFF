@@ -157,9 +157,11 @@ class MainActivity : Activity() {
         branding.addView(label("GRAVADOR DE TELA", 10f, red, true))
         header.addView(branding)
         root.addView(header)
-        space(root, 25)
-        root.addView(label(title, 24f, white, true))
-        space(root, 5)
+        space(root, if (title.isBlank()) 17 else 23)
+        if (title.isNotBlank()) {
+            root.addView(label(title, 24f, white, true))
+            space(root, 5)
+        }
     }
 
     private fun openMenu() {
@@ -186,50 +188,97 @@ class MainActivity : Activity() {
     }
 
     private fun showHome() {
-        startPage("home", "Central de gravação")
-        root.addView(label("Tudo pronto para capturar sua tela.", 13f, muted))
+        startPage("home", "")
+        // Hero de gravação: hierarquia visual mais clara e controles destacados.
+        val intro = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(2, 2, 2, 0)
+        }
+        intro.addView(label("CAPTURE. JOGUE. COMPARTILHE.", 10f, red, true))
+        space(intro, 5)
+        intro.addView(label("Seu jogo,\nno seu melhor momento.", 27f, white, true).apply { setLineSpacing(0f, 0.98f) })
+        space(intro, 6)
+        intro.addView(label("Gravador leve, feito para Android e pensado também para celulares de entrada.", 13f, muted))
+        root.addView(intro)
         space(root, 18)
 
-        val panel = card()
+        val panel = card().apply {
+            setPadding(20, 19, 20, 18)
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(31, 35, 45), Color.rgb(18, 21, 28))).apply {
+                cornerRadius = 26f
+                setStroke(1, Color.rgb(57, 63, 76))
+            }
+        }
         root.addView(panel)
-        panel.addView(label("STATUS DA GRAVAÇÃO", 11f, muted, true))
-        space(panel, 13)
-        statusView = label("Pronto para gravar", 23f, white, true)
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        top.addView(label("●  CENTRAL DE CAPTURA", 10f, muted, true), LinearLayout.LayoutParams(0, -2, 1f))
+        val liveTag = label("PRONTO", 10f, green, true).apply {
+            setPadding(11, 7, 11, 7)
+            background = GradientDrawable().apply { setColor(Color.rgb(24, 61, 48)); cornerRadius = 30f }
+        }
+        top.addView(liveTag)
+        panel.addView(top)
+        space(panel, 22)
+        statusView = label("Pronto para gravar", 21f, white, true)
         panel.addView(statusView)
-        space(panel, 6)
-        timerView = label("00:00:00", 34f, white, true).apply { letterSpacing = 0.06f }
+        space(panel, 3)
+        timerView = label("00:00:00", 42f, white, true).apply { letterSpacing = 0.055f }
         panel.addView(timerView)
-        errorView = label("", 12f, red)
+        errorView = label("", 11f, amber)
         panel.addView(errorView)
-        space(panel, 15)
-        recordButton = actionButton("●  INICIAR GRAVAÇÃO") { onRecordButton() }
+        space(panel, 19)
+        recordButton = actionButton("●  INICIAR GRAVAÇÃO") { onRecordButton() }.apply {
+            textSize = 15f
+            minHeight = 58
+        }
         panel.addView(recordButton)
-        space(panel, 8)
-        pauseButton = actionButton("Ⅱ  PAUSAR GRAVAÇÃO", true) { togglePause() }
+        space(panel, 9)
+        pauseButton = actionButton("Ⅱ  PAUSAR GRAVAÇÃO", true) { togglePause() }.apply { minHeight = 52 }
         panel.addView(pauseButton)
-        space(panel, 8)
-        panel.addView(label("Os vídeos são salvos automaticamente em Movies/Sakano FF.", 11f, muted))
+        space(panel, 13)
+        panel.addView(label("SALVAMENTO AUTOMÁTICO  ·  Movies/Sakano FF", 9f, muted, true))
 
-        space(root, 16)
+        space(root, 14)
         val config = card()
         root.addView(config)
-        config.addView(label("CONFIGURAÇÃO ATUAL", 11f, red, true))
-        space(config, 9)
+        config.addView(label("PERFIL DE CAPTURA", 10f, red, true))
+        space(config, 8)
         val gameModeNow = prefs.getBoolean("game_mode", true)
         val effectiveResolutionNow = if (gameModeNow) minOf(prefs.getInt("resolution", 720), 720) else prefs.getInt("resolution", 720)
         val effectiveFpsNow = if (gameModeNow) minOf(prefs.getInt("fps", 30), 30) else prefs.getInt("fps", 30)
-        config.addView(label("${effectiveResolutionNow}p  •  ${effectiveFpsNow} FPS", 21f, white, true))
-        config.addView(label("${prefs.getString("quality", "Normal")}  •  ${audioModeLabel()}  •  ${if (prefs.getBoolean("game_mode", true)) "Perfil jogo" else "Perfil personalizado"}", 12f, muted))
+        config.addView(label("${effectiveResolutionNow}p  /  ${effectiveFpsNow} FPS", 22f, white, true))
+        config.addView(label("${prefs.getString("quality", "Normal")}  •  ${audioModeLabel()}  •  ${if (gameModeNow) "Perfil jogo" else "Personalizado"}", 12f, muted))
 
+        space(root, 12)
+        val storage = card()
+        root.addView(storage)
+        val storageRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val storageInfo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        storageInfo.addView(label("ESPAÇO DISPONÍVEL", 10f, muted, true))
+        space(storageInfo, 5)
+        storageInfo.addView(label(availableStorage(), 20f, white, true))
+        storageInfo.addView(label("${getVideos().size} gravação(ões) na biblioteca", 11f, muted))
+        storageRow.addView(storageInfo, LinearLayout.LayoutParams(0, -2, 1f))
+        val storageIcon = label("▣", 30f, red, true)
+        storageRow.addView(storageIcon)
+        storage.addView(storageRow)
+
+        space(root, 15)
+        val tip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(14, 13, 14, 13)
+            background = GradientDrawable().apply { setColor(Color.rgb(25, 30, 39)); cornerRadius = 17f; setStroke(1, Color.rgb(43, 50, 62)) }
+        }
+        tip.addView(label("✦", 19f, amber, true))
+        val tipText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(10, 0, 0, 0) }
+        tipText.addView(label("DICA PARA CELULARES FRACOS", 10f, white, true))
+        tipText.addView(label("Use o perfil Jogo em 720p e 30 FPS para uma captura mais leve.", 11f, muted))
+        tip.addView(tipText)
+        root.addView(tip)
         space(root, 16)
-        val stats = card()
-        root.addView(stats)
-        stats.addView(label("ARMAZENAMENTO DISPONÍVEL", 11f, muted, true))
-        space(stats, 7)
-        stats.addView(label(availableStorage(), 20f, white, true))
-        stats.addView(label("${getVideos().size} vídeo(s) salvos no Sakano FF", 12f, muted))
-        space(root, 18)
-        root.addView(label("SAKANO FF  •  VERSÃO 3.3", 10f, muted))
+        root.addView(label("SAKANO FF  •  VERSÃO 3.4", 10f, muted))
         refreshHomeStatus()
         handler.removeCallbacks(ticker)
         handler.post(ticker)
@@ -549,7 +598,7 @@ class MainActivity : Activity() {
     private fun showAbout() {
         startPage("about", "Ajuda e informações")
         val panel = card(); root.addView(panel)
-        panel.addView(label("SAKANO FF 3.3", 22f, white, true))
+        panel.addView(label("SAKANO FF 3.4", 22f, white, true))
         space(panel, 8)
         panel.addView(label("O Sakano FF é um gravador de tela Android que está sendo desenvolvido com foco em celulares fracos e aparelhos de entrada. A proposta é oferecer uma gravação simples, leve e prática, consumindo o mínimo possível de armazenamento e recursos do aparelho.", 13f, muted))
         space(panel, 10)

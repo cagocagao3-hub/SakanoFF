@@ -110,7 +110,7 @@ class RecordingService : Service() {
             startRecording(code, data, effectiveResolution, effectiveFps)
         } catch (e: Exception) {
             val detail = when (e) {
-                is SecurityException -> "Permissão do Android recusada ao iniciar a captura: ${e.message ?: "verifique as permissões"}"
+                is SecurityException -> "Permissão do Android recusada: ${e.message ?: "verifique a autorização de captura"}"
                 is IllegalStateException -> e.message ?: "O gravador não conseguiu iniciar."
                 else -> "${e.javaClass.simpleName}: ${e.message ?: "não foi possível iniciar a gravação"}"
             }
@@ -157,17 +157,23 @@ class RecordingService : Service() {
         (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
         val physicalWidth = metrics.widthPixels.coerceAtLeast(2)
         val physicalHeight = metrics.heightPixels.coerceAtLeast(2)
-        val shortSide = minOf(resolution.coerceAtLeast(480), minOf(physicalWidth, physicalHeight))
-        val longSide = (shortSide.toFloat() * maxOf(physicalWidth, physicalHeight) / minOf(physicalWidth, physicalHeight)).toInt()
-        val width: Int
-        val height: Int
-        if (physicalHeight >= physicalWidth) {
-            width = (shortSide - shortSide % 2).coerceAtLeast(2)
-            height = (longSide - longSide % 2).coerceAtLeast(2)
-        } else {
-            width = (longSide - longSide % 2).coerceAtLeast(2)
-            height = (shortSide - shortSide % 2).coerceAtLeast(2)
+        // A resolução selecionada representa o lado maior (720p = 1280 px),
+        // não o lado curto. Isso evita pedir ao encoder 720x1600 em aparelhos
+        // de entrada, combinação que pode falhar no MediaRecorder.
+        val maxLongEdge = when {
+            resolution >= 1440 -> 2560
+            resolution >= 1080 -> 1920
+            resolution >= 720 -> 1280
+            else -> 854
         }
+        val scale = minOf(1f, maxLongEdge.toFloat() / maxOf(physicalWidth, physicalHeight).toFloat())
+        var width = ((physicalWidth * scale).toInt() / 2) * 2
+        var height = ((physicalHeight * scale).toInt() / 2) * 2
+        width = width.coerceAtLeast(2)
+        height = height.coerceAtLeast(2)
+        // Mantém dimensões pares e nunca ultrapassa o tamanho físico da tela.
+        width = minOf(width, (physicalWidth / 2) * 2)
+        height = minOf(height, (physicalHeight / 2) * 2)
 
         val fd = createOutput()
         if (intentAudioModeInternal()) {
