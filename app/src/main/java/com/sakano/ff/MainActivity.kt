@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.BitmapFactory
+import android.widget.ImageView
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.*
@@ -50,11 +52,15 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("sakano_settings", MODE_PRIVATE)
         // Configuração inicial equilibrada para aparelhos de entrada.
+        val savedAudioMode = prefs.getString("audio_mode", if (prefs.getBoolean("audio", false)) "mic" else "none") ?: "none"
+        val normalizedAudioMode = if (savedAudioMode == "mix") "none" else savedAudioMode
         prefs.edit()
+            .putString("audio_mode", normalizedAudioMode)
+            .putBoolean("audio", normalizedAudioMode == "mic")
             .putInt("resolution", prefs.getInt("resolution", 720))
             .putInt("fps", prefs.getInt("fps", 30))
             .putString("quality", prefs.getString("quality", "Normal") ?: "Normal")
-            .putBoolean("audio", prefs.getBoolean("audio", false))
+            .putString("audio_mode", prefs.getString("audio_mode", if (prefs.getBoolean("audio", false)) "mic" else "none") ?: "none")
             .putBoolean("game_mode", prefs.getBoolean("game_mode", true))
             .apply()
         window.statusBarColor = bg
@@ -139,9 +145,16 @@ class MainActivity : Activity() {
             setOnClickListener { openMenu() }
         }
         header.addView(menu)
+        val logo = ImageView(this).apply {
+            setImageResource(com.sakano.ff.R.drawable.sakano_logo)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(cardColor); setStroke(2, red) }
+            clipToOutline = true
+        }
+        header.addView(logo, LinearLayout.LayoutParams(54, 54).apply { rightMargin = 12 })
         val branding = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         branding.addView(label("SAKANO FF", 21f, white, true))
-        branding.addView(label("SCREEN RECORDER  •  MOBILE", 9f, red, true))
+        branding.addView(label("GRAVADOR DE TELA", 10f, red, true))
         header.addView(branding)
         root.addView(header)
         space(root, 25)
@@ -152,9 +165,11 @@ class MainActivity : Activity() {
     private fun openMenu() {
         val options = arrayOf(
             "⌂   Início",
-            "▣   Meus vídeos",
-            "⚙   Configurações",
-            "◷   Estatísticas"
+            "▣   Biblioteca",
+            "⚙   Ajustes de gravação",
+            "◷   Estatísticas",
+            "✦   Desempenho",
+            "ⓘ   Sobre o Sakano FF"
         )
         AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle("SAKANO FF")
@@ -164,6 +179,8 @@ class MainActivity : Activity() {
                     1 -> showVideos()
                     2 -> showSettings()
                     3 -> showStats()
+                    4 -> showPerformance()
+                    5 -> showAbout()
                 }
             }
             .setNegativeButton("Fechar", null)
@@ -204,7 +221,7 @@ class MainActivity : Activity() {
         val effectiveResolutionNow = if (gameModeNow) minOf(prefs.getInt("resolution", 720), 720) else prefs.getInt("resolution", 720)
         val effectiveFpsNow = if (gameModeNow) minOf(prefs.getInt("fps", 30), 30) else prefs.getInt("fps", 30)
         config.addView(label("${effectiveResolutionNow}p  •  ${effectiveFpsNow} FPS", 21f, white, true))
-        config.addView(label("${prefs.getString("quality", "Normal")} qualidade  •  ${if (prefs.getBoolean("audio", false)) "Microfone ligado" else "Sem microfone"}  •  ${if (prefs.getBoolean("game_mode", true)) "Modo jogo" else "Modo livre"}", 12f, muted))
+        config.addView(label("${prefs.getString("quality", "Normal")}  •  ${audioModeLabel()}  •  ${if (prefs.getBoolean("game_mode", true)) "Perfil jogo" else "Perfil personalizado"}", 12f, muted))
 
         space(root, 16)
         val stats = card()
@@ -214,7 +231,7 @@ class MainActivity : Activity() {
         stats.addView(label(availableStorage(), 20f, white, true))
         stats.addView(label("${getVideos().size} vídeo(s) salvos no Sakano FF", 12f, muted))
         space(root, 18)
-        root.addView(label("SAKANO FF  •  VERSÃO 3.1", 10f, muted))
+        root.addView(label("SAKANO FF  •  VERSÃO 3.2", 10f, muted))
         refreshHomeStatus()
         handler.removeCallbacks(ticker)
         handler.post(ticker)
@@ -299,7 +316,8 @@ class MainActivity : Activity() {
     }
 
     private fun checkAudioPermission() {
-        if (prefs.getBoolean("audio", false) && Build.VERSION.SDK_INT >= 23 &&
+        val audioMode = prefs.getString("audio_mode", "none") ?: "none"
+        if ((audioMode == "mic" || audioMode == "internal") && Build.VERSION.SDK_INT >= 23 &&
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             pendingRecording = true
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 201)
@@ -313,7 +331,7 @@ class MainActivity : Activity() {
         if (requestCode == 201 && pendingRecording) {
             pendingRecording = false
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) launchProjection()
-            else Toast.makeText(this, "Permissão de microfone não concedida. Você pode desativar o áudio nas configurações.", Toast.LENGTH_LONG).show()
+            else Toast.makeText(this, "Permissão de áudio não concedida. Escolha outra fonte nas configurações.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -332,7 +350,8 @@ class MainActivity : Activity() {
             val serviceIntent = Intent(this, RecordingService::class.java).apply {
                 putExtra("code", resultCode)
                 putExtra("data", data)
-                putExtra("audio", prefs.getBoolean("audio", false))
+                putExtra("audioMode", prefs.getString("audio_mode", "none") ?: "none")
+                putExtra("audio", (prefs.getString("audio_mode", "none") ?: "none") == "mic")
                 putExtra("resolution", prefs.getInt("resolution", 720))
                 putExtra("fps", prefs.getInt("fps", 30))
                 putExtra("gameMode", prefs.getBoolean("game_mode", true))
@@ -380,10 +399,13 @@ class MainActivity : Activity() {
             prefs.edit().putBoolean("game_mode", !prefs.getBoolean("game_mode", true)).apply()
             showSettings()
         }
-        setting("Microfone", if (prefs.getBoolean("audio", false)) "Ativado" else "Desativado") {
-            val next = !prefs.getBoolean("audio", false)
-            prefs.edit().putBoolean("audio", next).apply()
-            showSettings()
+        setting("Áudio da gravação", audioModeLabel()) {
+            choose("Fonte de áudio", arrayOf("Sem áudio", "Áudio interno", "Microfone")) { i ->
+                val mode = listOf("none", "internal", "mic")[i]
+                prefs.edit().putString("audio_mode", mode).putBoolean("audio", mode == "mic").apply()
+                if (mode == "internal" && Build.VERSION.SDK_INT < 29) Toast.makeText(this, "Áudio interno exige Android 10 ou superior.", Toast.LENGTH_LONG).show()
+                showSettings()
+            }
         }
         setting("Pasta de gravação", "Movies/Sakano FF") {
             AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
@@ -396,7 +418,13 @@ class MainActivity : Activity() {
         root.addView(note)
         note.addView(label("DICA DE DESEMPENHO", 12f, red, true))
         space(note, 8)
-        note.addView(label("O modo desempenho limita a captura a 720p e 30 FPS, reduz o trabalho do codificador e mantém o áudio do microfone desligado por padrão. Isso ajuda a diminuir a carga durante jogos.", 13f, muted))
+        note.addView(label("O perfil jogo limita a captura a 720p e 30 FPS. Use Sem áudio quando quiser reduzir ainda mais o processamento.", 13f, muted))
+    }
+
+    private fun audioModeLabel(): String = when (prefs.getString("audio_mode", "none")) {
+        "mic" -> "Microfone"
+        "internal" -> "Áudio interno"
+        else -> "Sem áudio"
     }
 
     private fun setting(title: String, value: String, action: () -> Unit) {
@@ -532,8 +560,8 @@ class MainActivity : Activity() {
             prefs.edit().putBoolean("game_mode", !enabled).apply()
             showPerformance()
         }
-        setting("Perfil recomendado", "720p • 30 FPS • Normal • Microfone desligado") {
-            prefs.edit().putInt("resolution", 720).putInt("fps", 30).putString("quality", "Normal").putBoolean("audio", false).putBoolean("game_mode", true).apply()
+        setting("Perfil recomendado", "720p • 30 FPS • Normal • Sem áudio") {
+            prefs.edit().putInt("resolution", 720).putInt("fps", 30).putString("quality", "Normal").putBoolean("audio", false).putString("audio_mode", "none").putBoolean("game_mode", true).apply()
             Toast.makeText(this, "Perfil leve aplicado.", Toast.LENGTH_SHORT).show()
             showPerformance()
         }
@@ -544,7 +572,7 @@ class MainActivity : Activity() {
     private fun showAbout() {
         startPage("about", "Ajuda e informações")
         val panel = card(); root.addView(panel)
-        panel.addView(label("SAKANO FF 3.1", 22f, white, true))
+        panel.addView(label("SAKANO FF 3.2", 22f, white, true))
         space(panel, 8)
         panel.addView(label("Gravador de tela Android com biblioteca local, controles de captura, estatísticas e perfil de desempenho para jogos.", 13f, muted))
         space(root, 12)

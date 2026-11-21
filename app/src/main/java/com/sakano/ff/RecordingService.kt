@@ -23,6 +23,7 @@ class RecordingService : Service() {
     }
 
     private var recorder: MediaRecorder? = null
+    private var internalCapture: InternalAudioCapture? = null
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
     private var outputUri: android.net.Uri? = null
@@ -33,6 +34,7 @@ class RecordingService : Service() {
     private var stopping = false
     private var mic = false
     private var gameMode = true
+    private var internalAudioMode = false
     private val prefs by lazy { getSharedPreferences("sakano_settings", MODE_PRIVATE) }
 
     override fun onBind(intent: Intent?) = null
@@ -82,10 +84,13 @@ class RecordingService : Service() {
             return START_NOT_STICKY
         }
         stopping = false
-        mic = intent.getBooleanExtra("audio", false)
+        val audioMode = intent.getStringExtra("audioMode") ?: if (intent.getBooleanExtra("audio", false)) "mic" else "none"
+        mic = audioMode == "mic"
+        internalAudioMode = audioMode == "internal"
         gameMode = intent.getBooleanExtra("gameMode", true)
         try {
-            val type = if (Build.VERSION.SDK_INT >= 34 && mic) {
+            if (audioMode == "internal" && Build.VERSION.SDK_INT < 29) throw IllegalStateException("Áudio interno exige Android 10 ou superior.")
+            val type = if (Build.VERSION.SDK_INT >= 34 && (mic || internalAudioMode)) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             } else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
             if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notification("Preparando captura..."), type)
@@ -127,6 +132,8 @@ class RecordingService : Service() {
         return null
     }
 
+    private fun intentAudioModeInternal() = internalAudioMode
+
     private fun startRecording(code: Int, data: Intent, resolution: Int, fps: Int) {
         setStatus("Preparando")
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -155,6 +162,35 @@ class RecordingService : Service() {
         }
 
         val fd = createOutput()
+        if (intentAudioModeInternal()) {
+            val quality = prefs.getString("quality", "Normal")
+            val bitrate = when (quality) {
+                "Econômica" -> 2_000_000
+                "Normal" -> 3_000_000
+                "Alta" -> 4_000_000
+                "Máxima" -> 5_500_000
+                else -> 3_000_000
+            }
+            val adjusted = (bitrate * (fps.coerceIn(24, 60) / 30f) *
+                ((width.toLong() * height.toLong()).toFloat() / (1280f * 720f)).coerceIn(0.65f, 1.8f))
+                .toInt().coerceIn(1_800_000, 8_000_000)
+            val engine = InternalAudioCapture(projection!!, width, height, fps.coerceIn(24, 60), adjusted,
+                if (fd != null) fd else null, if (fd == null) outputFile!!.absolutePath else null)
+            internalCapture = engine
+            val inputSurface = engine.prepare()
+            display = projection!!.createVirtualDisplay(
+                "SakanoFF-Display", width, height, metrics.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, inputSurface, null, null
+            ) ?: throw IllegalStateException("Não foi possível iniciar a captura da tela.")
+            engine.start()
+            recording = true
+            paused = false
+            prefs.edit().putLong("recording_started_at", SystemClock.elapsedRealtime())
+                .putLong("recording_elapsed_base", 0L).putLong("last_duration_ms", 0L).apply()
+            setStatus("Gravando")
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification("Gravando tela + áudio interno."))
+            return
+        }
         val media = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else {
             @Suppress("DEPRECATION")
             MediaRecorder()
@@ -208,7 +244,7 @@ class RecordingService : Service() {
         if (!recording || paused || stopping) return
         try {
             if (Build.VERSION.SDK_INT < 24) throw IllegalStateException("Pausar gravação exige Android 7.0 ou superior.")
-            recorder?.pause()
+            if (internalCapture != null) { internalCapture?.pauseCapture(); display?.setSurface(null) } else recorder?.pause()
             val base = prefs.getLong("recording_elapsed_base", 0L)
             val started = prefs.getLong("recording_started_at", 0L)
             val elapsed = base + (SystemClock.elapsedRealtime() - started).coerceAtLeast(0L)
@@ -224,7 +260,11 @@ class RecordingService : Service() {
     private fun resumeRecording() {
         if (!recording || !paused || stopping) return
         try {
-            recorder?.resume()
+            if (internalCapture != null) { internalCapture?.resumeCapture() } else recorder?.resume()
+            if (internalCapture != null) {
+                val surface = internalCapture?.getSurfaceForResume()
+                if (surface != null) display?.setSurface(surface)
+            }
             prefs.edit().putLong("recording_started_at", SystemClock.elapsedRealtime()).apply()
             paused = false
             setStatus("Gravando")
@@ -247,18 +287,22 @@ class RecordingService : Service() {
         stopping = true
         setStatus("Finalizando")
         var valid = false
+        var finalError = "A gravação ficou curta demais ou não gerou um arquivo válido. Tente novamente."
         val base = prefs.getLong("recording_elapsed_base", 0L)
         val started = prefs.getLong("recording_started_at", 0L)
         val elapsed = if (recording && !paused && started > 0L) base + (SystemClock.elapsedRealtime() - started) else base
         if (recording) {
             try {
-                recorder?.stop()
+                if (internalCapture != null) internalCapture?.stop() else recorder?.stop()
                 valid = true
-            } catch (_: Exception) { valid = false }
+            } catch (e: Exception) {
+                finalError = e.message ?: "Falha ao finalizar a captura interna."
+                valid = false
+            }
         }
         prefs.edit().putLong("last_duration_ms", elapsed).apply()
         cleanup(valid)
-        setStatus("Pronto", if (valid) "" else "A gravação ficou curta demais ou não gerou um arquivo válido. Tente novamente.")
+        setStatus("Pronto", if (valid) "" else finalError)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -270,6 +314,8 @@ class RecordingService : Service() {
         display = null
         try { recorder?.reset(); recorder?.release() } catch (_: Exception) {}
         recorder = null
+        try { internalCapture?.stop() } catch (_: Exception) {}
+        internalCapture = null
         try { descriptor?.close() } catch (_: Exception) {}
         descriptor = null
         if (Build.VERSION.SDK_INT >= 29) {
