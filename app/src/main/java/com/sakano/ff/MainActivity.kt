@@ -40,7 +40,7 @@ class MainActivity : Activity() {
     private val ticker = object : Runnable {
         override fun run() {
             if (!isFinishing && currentPage == "home") refreshHomeStatus()
-            handler.postDelayed(this, 500)
+            handler.postDelayed(this, 1000)
         }
     }
 
@@ -49,6 +49,14 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("sakano_settings", MODE_PRIVATE)
+        // Configuração inicial equilibrada para aparelhos de entrada.
+        prefs.edit()
+            .putInt("resolution", prefs.getInt("resolution", 720))
+            .putInt("fps", prefs.getInt("fps", 30))
+            .putString("quality", prefs.getString("quality", "Normal") ?: "Normal")
+            .putBoolean("audio", prefs.getBoolean("audio", false))
+            .putBoolean("game_mode", prefs.getBoolean("game_mode", true))
+            .apply()
         window.statusBarColor = bg
         window.navigationBarColor = bg
         window.decorView.systemUiVisibility = 0
@@ -138,7 +146,14 @@ class MainActivity : Activity() {
     }
 
     private fun openMenu() {
-        val options = arrayOf("⌂   Início", "▣   Meus vídeos", "⚙   Configurações", "ⓘ   Sobre o Sakano FF")
+        val options = arrayOf(
+            "⌂   Início",
+            "▣   Meus vídeos",
+            "⚙   Configurações",
+            "◷   Estatísticas",
+            "⚡   Desempenho",
+            "ⓘ   Ajuda e informações"
+        )
         AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle("SAKANO FF")
             .setItems(options) { _, which ->
@@ -146,7 +161,9 @@ class MainActivity : Activity() {
                     0 -> showHome()
                     1 -> showVideos()
                     2 -> showSettings()
-                    3 -> showAbout()
+                    3 -> showStats()
+                    4 -> showPerformance()
+                    5 -> showAbout()
                 }
             }
             .setNegativeButton("Fechar", null)
@@ -183,8 +200,11 @@ class MainActivity : Activity() {
         root.addView(config)
         config.addView(label("CONFIGURAÇÃO ATUAL", 11f, red, true))
         space(config, 9)
-        config.addView(label("${prefs.getInt("resolution", 720)}p  •  ${prefs.getInt("fps", 30)} FPS", 21f, white, true))
-        config.addView(label("${prefs.getString("quality", "Alta")} qualidade  •  ${if (prefs.getBoolean("audio", false)) "Microfone ligado" else "Sem microfone"}", 12f, muted))
+        val gameModeNow = prefs.getBoolean("game_mode", true)
+        val effectiveResolutionNow = if (gameModeNow) minOf(prefs.getInt("resolution", 720), 720) else prefs.getInt("resolution", 720)
+        val effectiveFpsNow = if (gameModeNow) minOf(prefs.getInt("fps", 30), 30) else prefs.getInt("fps", 30)
+        config.addView(label("${effectiveResolutionNow}p  •  ${effectiveFpsNow} FPS", 21f, white, true))
+        config.addView(label("${prefs.getString("quality", "Normal")} qualidade  •  ${if (prefs.getBoolean("audio", false)) "Microfone ligado" else "Sem microfone"}  •  ${if (prefs.getBoolean("game_mode", true)) "Modo jogo" else "Modo livre"}", 12f, muted))
 
         space(root, 16)
         val stats = card()
@@ -194,7 +214,7 @@ class MainActivity : Activity() {
         stats.addView(label(availableStorage(), 20f, white, true))
         stats.addView(label("${getVideos().size} vídeo(s) salvos no Sakano FF", 12f, muted))
         space(root, 18)
-        root.addView(label("SAKANO FF  •  VERSÃO 3.0", 10f, muted))
+        root.addView(label("SAKANO FF  •  VERSÃO 3.1", 10f, muted))
         refreshHomeStatus()
         handler.removeCallbacks(ticker)
         handler.post(ticker)
@@ -315,6 +335,7 @@ class MainActivity : Activity() {
                 putExtra("audio", prefs.getBoolean("audio", false))
                 putExtra("resolution", prefs.getInt("resolution", 720))
                 putExtra("fps", prefs.getInt("fps", 30))
+                putExtra("gameMode", prefs.getBoolean("game_mode", true))
             }
             try {
                 if (Build.VERSION.SDK_INT >= 26) startForegroundService(serviceIntent) else startService(serviceIntent)
@@ -349,11 +370,15 @@ class MainActivity : Activity() {
                 showSettings()
             }
         }
-        setting("Qualidade", prefs.getString("quality", "Alta") ?: "Alta") {
+        setting("Qualidade", prefs.getString("quality", "Normal") ?: "Normal") {
             choose("Qualidade do vídeo", arrayOf("Econômica", "Normal", "Alta", "Máxima")) { i ->
                 prefs.edit().putString("quality", listOf("Econômica", "Normal", "Alta", "Máxima")[i]).apply()
                 showSettings()
             }
+        }
+        setting("Modo desempenho para jogos", if (prefs.getBoolean("game_mode", true)) "Ativado • até 720p / 30 FPS" else "Desativado • usa os valores escolhidos") {
+            prefs.edit().putBoolean("game_mode", !prefs.getBoolean("game_mode", true)).apply()
+            showSettings()
         }
         setting("Microfone", if (prefs.getBoolean("audio", false)) "Ativado" else "Desativado") {
             val next = !prefs.getBoolean("audio", false)
@@ -371,7 +396,7 @@ class MainActivity : Activity() {
         root.addView(note)
         note.addView(label("DICA DE DESEMPENHO", 12f, red, true))
         space(note, 8)
-        note.addView(label("Para aparelhos de entrada, use 720p, 30 FPS e qualidade Normal. A disponibilidade de 1080p, 1440p e 60 FPS depende do aparelho.", 13f, muted))
+        note.addView(label("O modo desempenho limita a captura a 720p e 30 FPS, reduz o trabalho do codificador e mantém o áudio do microfone desligado por padrão. Isso ajuda a diminuir a carga durante jogos.", 13f, muted))
     }
 
     private fun setting(title: String, value: String, action: () -> Unit) {
@@ -470,13 +495,62 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showAbout() {
-        startPage("about", "Sobre o aplicativo")
+    private fun showStats() {
+        startPage("stats", "Estatísticas")
+        val videos = getVideos()
+        val totalBytes = videos.sumOf { it.size }
+        val totalMb = totalBytes / (1024.0 * 1024.0)
+        val totalMinutes = videos.sumOf { it.duration } / 60000L
         val panel = card(); root.addView(panel)
-        panel.addView(label("SAKANO FF 3.0", 22f, white, true))
-        space(panel, 8)
-        panel.addView(label("Gravador de tela para Android, com biblioteca local, configurações de captura e controles durante a gravação.", 13f, muted))
+        panel.addView(label("SUA BIBLIOTECA", 11f, red, true))
+        space(panel, 10)
+        panel.addView(label("${videos.size} vídeos", 25f, white, true))
+        panel.addView(label(String.format(Locale.getDefault(), "%.1f MB ocupados", totalMb), 13f, muted))
         space(root, 12)
-        root.addView(label("Recursos comerciais, planos e pagamentos não estão ativados nesta versão. A base está organizada para futuras expansões.", 12f, muted))
+        val details = card(); root.addView(details)
+        details.addView(label("TEMPO TOTAL DE VÍDEOS", 11f, muted, true))
+        space(details, 8)
+        details.addView(label("$totalMinutes minutos", 21f, white, true))
+        space(root, 12)
+        val storage = card(); root.addView(storage)
+        storage.addView(label("ARMAZENAMENTO LIVRE", 11f, muted, true))
+        space(storage, 8)
+        storage.addView(label(availableStorage(), 21f, white, true))
+        space(root, 12)
+        root.addView(label("As estatísticas são calculadas localmente a partir dos vídeos salvos pelo Sakano FF.", 12f, muted))
+    }
+
+    private fun showPerformance() {
+        startPage("performance", "Central de desempenho")
+        val enabled = prefs.getBoolean("game_mode", true)
+        val panel = card(); root.addView(panel)
+        panel.addView(label(if (enabled) "MODO JOGO ATIVADO" else "MODO JOGO DESATIVADO", 17f, if (enabled) green else amber, true))
+        space(panel, 8)
+        panel.addView(label(if (enabled) "Captura limitada a 720p e 30 FPS para reduzir o impacto durante partidas." else "A captura seguirá a resolução e o FPS selecionados nas configurações.", 13f, muted))
+        space(root, 12)
+        setting("Modo desempenho para jogos", if (enabled) "Ativado" else "Desativado") {
+            prefs.edit().putBoolean("game_mode", !enabled).apply()
+            showPerformance()
+        }
+        setting("Perfil recomendado", "720p • 30 FPS • Normal • Microfone desligado") {
+            prefs.edit().putInt("resolution", 720).putInt("fps", 30).putString("quality", "Normal").putBoolean("audio", false).putBoolean("game_mode", true).apply()
+            Toast.makeText(this, "Perfil leve aplicado.", Toast.LENGTH_SHORT).show()
+            showPerformance()
+        }
+        space(root, 8)
+        root.addView(label("Dica: feche aplicativos pesados antes de jogar. Nenhum gravador consegue garantir ausência total de quedas de FPS, pois isso depende do processador, temperatura e do próprio jogo.", 12f, muted))
+    }
+
+    private fun showAbout() {
+        startPage("about", "Ajuda e informações")
+        val panel = card(); root.addView(panel)
+        panel.addView(label("SAKANO FF 3.1", 22f, white, true))
+        space(panel, 8)
+        panel.addView(label("Gravador de tela Android com biblioteca local, controles de captura, estatísticas e perfil de desempenho para jogos.", 13f, muted))
+        space(root, 12)
+        val help = card(); root.addView(help)
+        help.addView(label("DICAS RÁPIDAS", 12f, red, true))
+        space(help, 8)
+        help.addView(label("• Use 720p e 30 FPS para jogar.\n• Deixe o microfone desligado se não precisar dele.\n• Evite gravar enquanto o aparelho estiver muito quente.\n• Mantenha espaço livre no armazenamento.\n• Faça um teste curto antes de uma partida importante.", 13f, muted))
     }
 }

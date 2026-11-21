@@ -32,6 +32,7 @@ class RecordingService : Service() {
     private var paused = false
     private var stopping = false
     private var mic = false
+    private var gameMode = true
     private val prefs by lazy { getSharedPreferences("sakano_settings", MODE_PRIVATE) }
 
     override fun onBind(intent: Intent?) = null
@@ -82,6 +83,7 @@ class RecordingService : Service() {
         }
         stopping = false
         mic = intent.getBooleanExtra("audio", false)
+        gameMode = intent.getBooleanExtra("gameMode", true)
         try {
             val type = if (Build.VERSION.SDK_INT >= 34 && mic) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
@@ -93,7 +95,11 @@ class RecordingService : Service() {
             @Suppress("DEPRECATION")
             val data: Intent? = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra("data", Intent::class.java) else intent.getParcelableExtra("data")
             if (code != Activity.RESULT_OK || data == null) throw IllegalStateException("A autorização de captura de tela não foi recebida.")
-            startRecording(code, data, intent.getIntExtra("resolution", 720), intent.getIntExtra("fps", 30))
+            val requestedResolution = intent.getIntExtra("resolution", 720)
+            val requestedFps = intent.getIntExtra("fps", 30)
+            val effectiveResolution = if (gameMode) minOf(requestedResolution, 720) else requestedResolution
+            val effectiveFps = if (gameMode) minOf(requestedFps, 30) else requestedFps
+            startRecording(code, data, effectiveResolution, effectiveFps)
         } catch (e: Exception) {
             failRecording(e.message ?: "Não foi possível iniciar a gravação.")
         }
@@ -165,14 +171,20 @@ class RecordingService : Service() {
         media.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
         media.setVideoSize(width, height)
         media.setVideoFrameRate(fps.coerceIn(24, 60))
-        val quality = prefs.getString("quality", "Alta")
+        // Bitrate moderado: reduz o trabalho de codificação sem reduzir a resolução 720p.
+        val quality = prefs.getString("quality", "Normal")
         val bitrate = when (quality) {
             "Econômica" -> 2_000_000
             "Normal" -> 3_000_000
-            "Máxima" -> 8_000_000
-            else -> 4_000_000
+            "Alta" -> 4_000_000
+            "Máxima" -> 5_500_000
+            else -> 3_000_000
         }
-        media.setVideoEncodingBitRate(if (fps >= 60) bitrate * 2 else bitrate)
+        val fpsFactor = fps.coerceIn(24, 60) / 30f
+        val resolutionFactor = (width.toLong() * height.toLong()).toFloat() / (1280f * 720f)
+        val adjustedBitrate = (bitrate * fpsFactor * resolutionFactor.coerceIn(0.65f, 1.8f)).toInt()
+            .coerceIn(1_800_000, 8_000_000)
+        media.setVideoEncodingBitRate(adjustedBitrate)
         if (fd != null) media.setOutputFile(fd) else media.setOutputFile(outputFile!!.absolutePath)
         media.prepare()
 
