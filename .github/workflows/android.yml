@@ -1,4 +1,4 @@
-name: Sakano FF - Build APK
+name: Sakano FF - APK
 
 on:
   push:
@@ -17,39 +17,37 @@ jobs:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
-      - name: Baixar projeto
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configurar Java 17
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Verificar Android SDK
+      - name: Check Android SDK
         run: |
-          echo "Android SDK: $ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms"
+          ls "$ANDROID_HOME/build-tools"
           test -d "$ANDROID_HOME/platforms/android-35"
-          test -d "$ANDROID_HOME/build-tools/35.0.0"
-          echo "SDK verificado!"
 
-      - name: Configurar Gradle
+      - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Compilar aplicativo
+      - name: Build APK
         run: gradle assembleDebug --no-daemon
 
-      - name: Verificar APK
+      - name: Verify APK
         run: |
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -f "$APK"
-          ls -lh "$APK"
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Disponibilizar APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SakanoFF-APK
+          name: SakanoFF-2.0-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
