@@ -90,7 +90,10 @@ class RecordingService : Service() {
         gameMode = intent.getBooleanExtra("gameMode", true)
         try {
             if (audioMode == "internal" && Build.VERSION.SDK_INT < 29) throw IllegalStateException("Áudio interno exige Android 10 ou superior.")
-            val type = if (Build.VERSION.SDK_INT >= 34 && (mic || internalAudioMode)) {
+            // AudioPlaybackCapture is playback capture, not microphone capture.
+            // Declaring the microphone FGS type here can make Android 14+ reject
+            // the service even after the screen-capture consent was granted.
+            val type = if (Build.VERSION.SDK_INT >= 34 && mic) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             } else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
             if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, notification("Preparando captura..."), type)
@@ -106,7 +109,12 @@ class RecordingService : Service() {
             val effectiveFps = if (gameMode) minOf(requestedFps, 30) else requestedFps
             startRecording(code, data, effectiveResolution, effectiveFps)
         } catch (e: Exception) {
-            failRecording(e.message ?: "Não foi possível iniciar a gravação.")
+            val detail = when (e) {
+                is SecurityException -> "Permissão do Android recusada ao iniciar a captura: ${e.message ?: "verifique as permissões"}"
+                is IllegalStateException -> e.message ?: "O gravador não conseguiu iniciar."
+                else -> "${e.javaClass.simpleName}: ${e.message ?: "não foi possível iniciar a gravação"}"
+            }
+            failRecording(detail)
         }
         return START_NOT_STICKY
     }

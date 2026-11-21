@@ -168,7 +168,6 @@ class MainActivity : Activity() {
             "▣   Biblioteca",
             "⚙   Ajustes de gravação",
             "◷   Estatísticas",
-            "✦   Desempenho",
             "ⓘ   Sobre o Sakano FF"
         )
         AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
@@ -179,8 +178,7 @@ class MainActivity : Activity() {
                     1 -> showVideos()
                     2 -> showSettings()
                     3 -> showStats()
-                    4 -> showPerformance()
-                    5 -> showAbout()
+                    4 -> showAbout()
                 }
             }
             .setNegativeButton("Fechar", null)
@@ -231,7 +229,7 @@ class MainActivity : Activity() {
         stats.addView(label(availableStorage(), 20f, white, true))
         stats.addView(label("${getVideos().size} vídeo(s) salvos no Sakano FF", 12f, muted))
         space(root, 18)
-        root.addView(label("SAKANO FF  •  VERSÃO 3.2", 10f, muted))
+        root.addView(label("SAKANO FF  •  VERSÃO 3.3", 10f, muted))
         refreshHomeStatus()
         handler.removeCallbacks(ticker)
         handler.post(ticker)
@@ -548,33 +546,16 @@ class MainActivity : Activity() {
         root.addView(label("As estatísticas são calculadas localmente a partir dos vídeos salvos pelo Sakano FF.", 12f, muted))
     }
 
-    private fun showPerformance() {
-        startPage("performance", "Central de desempenho")
-        val enabled = prefs.getBoolean("game_mode", true)
-        val panel = card(); root.addView(panel)
-        panel.addView(label(if (enabled) "MODO JOGO ATIVADO" else "MODO JOGO DESATIVADO", 17f, if (enabled) green else amber, true))
-        space(panel, 8)
-        panel.addView(label(if (enabled) "Captura limitada a 720p e 30 FPS para reduzir o impacto durante partidas." else "A captura seguirá a resolução e o FPS selecionados nas configurações.", 13f, muted))
-        space(root, 12)
-        setting("Modo desempenho para jogos", if (enabled) "Ativado" else "Desativado") {
-            prefs.edit().putBoolean("game_mode", !enabled).apply()
-            showPerformance()
-        }
-        setting("Perfil recomendado", "720p • 30 FPS • Normal • Sem áudio") {
-            prefs.edit().putInt("resolution", 720).putInt("fps", 30).putString("quality", "Normal").putBoolean("audio", false).putString("audio_mode", "none").putBoolean("game_mode", true).apply()
-            Toast.makeText(this, "Perfil leve aplicado.", Toast.LENGTH_SHORT).show()
-            showPerformance()
-        }
-        space(root, 8)
-        root.addView(label("Dica: feche aplicativos pesados antes de jogar. Nenhum gravador consegue garantir ausência total de quedas de FPS, pois isso depende do processador, temperatura e do próprio jogo.", 12f, muted))
-    }
-
     private fun showAbout() {
         startPage("about", "Ajuda e informações")
         val panel = card(); root.addView(panel)
-        panel.addView(label("SAKANO FF 3.2", 22f, white, true))
+        panel.addView(label("SAKANO FF 3.3", 22f, white, true))
         space(panel, 8)
-        panel.addView(label("Gravador de tela Android com biblioteca local, controles de captura, estatísticas e perfil de desempenho para jogos.", 13f, muted))
+        panel.addView(label("O Sakano FF é um gravador de tela Android que está sendo desenvolvido com foco em celulares fracos e aparelhos de entrada. A proposta é oferecer uma gravação simples, leve e prática, consumindo o mínimo possível de armazenamento e recursos do aparelho.", 13f, muted))
+        space(panel, 10)
+        panel.addView(label("O projeto está em desenvolvimento. Estamos trabalhando para melhorar a estabilidade, reduzir o tamanho do APK e manter funções úteis para quem joga em celulares com pouca memória.", 13f, muted))
+        space(panel, 10)
+        panel.addView(label("Recursos: gravação de tela, biblioteca de vídeos e três opções de áudio: sem áudio, áudio interno (quando permitido pelo jogo) e microfone.", 13f, muted))
         space(root, 12)
         val help = card(); root.addView(help)
         help.addView(label("DICAS RÁPIDAS", 12f, red, true))
