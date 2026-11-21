@@ -408,6 +408,18 @@ class MainActivity : Activity() {
         }
         root.addView(intro, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 14 })
 
+        val gameModeEnabled = prefs.getBoolean("game_mode", true)
+        setting("Modo Jogo", if (gameModeEnabled) "Ativado · 720p · 30 FPS · Econômica" else "Desativado · configurações personalizadas") {
+            val enable = !prefs.getBoolean("game_mode", true)
+            val edit = prefs.edit().putBoolean("game_mode", enable)
+            if (enable) {
+                edit.putInt("resolution", 720)
+                    .putInt("fps", 30)
+                    .putString("quality", "Econômica")
+            }
+            edit.apply()
+            showSettings()
+        }
         setting("Resolução", "${prefs.getInt("resolution", 720)}p") {
             choose("Resolução", arrayOf("480p", "720p", "1080p", "1440p")) { i ->
                 prefs.edit().putInt("resolution", listOf(480, 720, 1080, 1440)[i]).apply(); showSettings()
@@ -542,61 +554,72 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun socialButton(title: String, subtitle: String, symbol: String, url: String, tint: Int) {
-        val panel = card()
-        panel.orientation = LinearLayout.HORIZONTAL
-        panel.gravity = Gravity.CENTER_VERTICAL
-        val icon = TextView(this).apply {
-            text = symbol; textSize = 25f; gravity = Gravity.CENTER; setTextColor(white)
-            background = GradientDrawable().apply { setColor(tint); cornerRadius = 16f }
+    private fun socialIconButton(drawableId: Int, description: String, url: String, tint: Int) {
+        val icon = ImageView(this).apply {
+            setImageResource(drawableId)
+            contentDescription = description
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(18, 18, 18, 18)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(tint)
+                setStroke(1, Color.rgb(66, 73, 88))
+            }
+            isClickable = true
+            isFocusable = true
+            elevation = 5f
+            setOnClickListener {
+                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                catch (_: Exception) { Toast.makeText(this@MainActivity, "Não foi possível abrir o link.", Toast.LENGTH_SHORT).show() }
+            }
         }
-        panel.addView(icon, LinearLayout.LayoutParams(52, 52).apply { rightMargin = 13 })
-        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        texts.addView(label(title, 15f, white, true))
-        texts.addView(label(subtitle, 11f, muted))
-        panel.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
-        panel.addView(label("↗", 23f, red, true))
-        panel.setOnClickListener {
-            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            catch (_: Exception) { Toast.makeText(this, "Não foi possível abrir o link.", Toast.LENGTH_SHORT).show() }
-        }
-        root.addView(panel, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 })
+        val lp = LinearLayout.LayoutParams(62, 62).apply { leftMargin = 13; rightMargin = 13 }
+        socialIconsRow?.addView(icon, lp)
     }
+
+    private var socialIconsRow: LinearLayout? = null
 
     private fun showAbout() {
         startPage("about", "Sobre o Sakano FF")
         val hero = card().apply {
             setPadding(20, 22, 20, 22)
-            addView(label("SAKANO FF 3.5", 22f, white, true))
+            addView(label("SAKANO FF 3.7", 22f, white, true))
             space(this, 7)
-            addView(label("GRAVADOR FEITO PARA IR MAIS LONGE COM MENOS", 10f, red, true))
+            addView(label("GRAVADOR LEVE PARA CELULARES DE ENTRADA", 10f, red, true))
             space(this, 13)
-            addView(label("Um gravador de tela Android em desenvolvimento, pensado especialmente para celulares de entrada e aparelhos com pouca memória.", 14f, muted))
+            addView(label("Um gravador de tela Android em desenvolvimento, pensado para funcionar com eficiência em aparelhos com pouca memória e recursos modestos.", 14f, muted))
         }
         root.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
 
         val mission = card()
         mission.addView(label("NOSSA PROPOSTA", 11f, red, true))
         space(mission, 8)
-        mission.addView(label("Ser simples de usar, leve no aparelho e direto ao ponto. O foco é oferecer gravação de tela com controles essenciais, sem encher o aplicativo de recursos desnecessários.", 13f, muted))
-        space(root, 12)
-        root.addView(mission)
+        mission.addView(label("Gravação simples, controles essenciais e foco em baixo consumo, sem recursos desnecessários.", 13f, muted))
+        root.addView(mission, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
 
         val features = card()
         features.addView(label("RECURSOS", 11f, red, true))
         space(features, 8)
-        features.addView(label("• Gravação de tela\n• Biblioteca para assistir e compartilhar\n• Sem áudio, áudio interno quando permitido pelo Android e microfone\n• Ajustes de resolução, FPS e qualidade", 13f, muted))
-        space(root, 12)
-        root.addView(features)
+        features.addView(label("• Gravação de tela\n• Biblioteca para assistir e compartilhar\n• Áudio interno quando permitido pelo Android e microfone\n• Modo Jogo com perfil leve de 720p e 30 FPS", 13f, muted))
+        root.addView(features, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 22 })
 
-        space(root, 18)
-        root.addView(label("ACOMPANHE O SAKANO FF", 12f, white, true))
-        space(root, 10)
-        socialButton("YouTube", "Vídeos, novidades e demonstrações", "▶", "https://youtube.com/@sakanoffz?feature=shared", Color.rgb(210, 35, 48))
-        socialButton("Instagram", "Acompanhe as atualizações do projeto", "◎", "https://www.instagram.com/sakanoffz?gwpx=MXU2ZW0yc20zMDUzNw==", Color.rgb(155, 65, 145))
-        space(root, 10)
+        val socialArea = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, 12, 0, 18)
+        }
+        socialArea.addView(label("SIGA O SAKANO FF", 11f, muted, true).apply { gravity = Gravity.CENTER })
+        space(socialArea, 16)
+        socialIconsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        socialArea.addView(socialIconsRow)
+        socialIconButton(R.drawable.ic_youtube_social, "YouTube", "https://youtube.com/@sakanoffz?feature=shared", Color.rgb(210, 35, 48))
+        socialIconButton(R.drawable.ic_instagram_social, "Instagram", "https://www.instagram.com/sakanoffz?gwpx=MXU2ZW0yc20zMDUzNw==", Color.rgb(155, 65, 145))
+        root.addView(socialArea, LinearLayout.LayoutParams(-1, -2))
         val footer = label("SAKANO FF  •  DESENVOLVIMENTO EM ANDAMENTO", 10f, muted, true).apply { gravity = Gravity.CENTER }
-        root.addView(footer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8; bottomMargin = 18 })
+        root.addView(footer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 4; bottomMargin = 18 })
     }
 
 }
