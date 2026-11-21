@@ -10,6 +10,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.*
 import android.provider.MediaStore
+import android.view.WindowManager
 import java.io.File
 
 class RecordingService : Service() {
