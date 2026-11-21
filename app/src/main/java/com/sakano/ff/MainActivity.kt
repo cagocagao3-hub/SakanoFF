@@ -20,6 +20,7 @@ import java.net.URL
 import android.os.*
 import android.provider.MediaStore
 import android.view.Gravity
+import android.view.WindowManager
 import android.widget.*
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -94,7 +95,6 @@ class MainActivity : Activity() {
                     val item = assets.getJSONObject(i)
                     if (item.optString("name").endsWith(".apk", true)) { apkUrl = item.optString("browser_download_url"); break }
                 }
-                val currentCode = if (Build.VERSION.SDK_INT >= 28) packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt() else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode
                 runOnUiThread {
                     val currentName = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
                     if (isVersionNewer(tag.removePrefix("v"), currentName) && !apkUrl.isNullOrBlank()) showRequiredUpdate(tag.removePrefix("v"), apkUrl!!)
@@ -251,6 +251,7 @@ class MainActivity : Activity() {
             cornerRadius = 22f
             setStroke(1, Color.rgb(42, 49, 60))
         }
+        elevation = 3f
     }
 
     private fun actionButton(title: String, secondary: Boolean = false, action: () -> Unit): Button =
@@ -292,11 +293,22 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val menu = label("☰", 28f, white, true).apply {
-            setPadding(0, 0, 18, 0)
+        val menu = TextView(this).apply {
+            text = "☰"
+            textSize = 21f
+            gravity = Gravity.CENTER
+            setTextColor(white)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.rgb(34, 39, 49))
+                setStroke(1, Color.rgb(66, 75, 91))
+            }
+            isClickable = true
+            isFocusable = true
+            contentDescription = "Abrir menu"
             setOnClickListener { openMenu() }
         }
-        header.addView(menu)
+        header.addView(menu, LinearLayout.LayoutParams(46, 46).apply { rightMargin = 13 })
         val logo = ImageView(this).apply {
             setImageResource(com.sakano.ff.R.drawable.sakano_logo)
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -317,26 +329,68 @@ class MainActivity : Activity() {
     }
 
     private fun openMenu() {
-        val options = arrayOf(
-            "⌂   Início",
-            "▣   Biblioteca",
-            "⚙   Ajustes de gravação",
-            "ⓘ   Sobre o Sakano FF",
-            "⇧   Atualizações"
-        )
-        AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-            .setTitle("SAKANO FF")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showHome()
-                    1 -> showVideos()
-                    2 -> showSettings()
-                    3 -> showAbout()
-                    4 -> showUpdates()
-                }
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 22, 20, 18)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(17, 21, 28))
+                cornerRadius = 26f
+                setStroke(1, Color.rgb(55, 64, 78))
             }
-            .setNegativeButton("Fechar", null)
-            .show()
+        }
+        panel.addView(label("SAKANO FF", 19f, white, true))
+        space(panel, 3)
+        panel.addView(label("NAVEGAÇÃO", 10f, red, true))
+        space(panel, 16)
+
+        fun entry(symbol: String, title: String, subtitle: String, action: () -> Unit) {
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(13, 12, 13, 12)
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(27, 32, 41))
+                    cornerRadius = 17f
+                    setStroke(1, Color.rgb(43, 51, 63))
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { dialog.dismiss(); action() }
+            }
+            val glyph = TextView(this).apply {
+                text = symbol
+                textSize = 21f
+                gravity = Gravity.CENTER
+                setTextColor(red)
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(53, 30, 38)) }
+            }
+            item.addView(glyph, LinearLayout.LayoutParams(42, 42).apply { rightMargin = 13 })
+            val copy = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            copy.addView(label(title, 14f, white, true))
+            copy.addView(label(subtitle, 11f, muted))
+            item.addView(copy, LinearLayout.LayoutParams(0, -2, 1f))
+            item.addView(label("›", 25f, muted, true))
+            panel.addView(item, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 9 })
+        }
+
+        entry("⌂", "Início", "Controles de gravação") { showHome() }
+        entry("▣", "Biblioteca", "Vídeos salvos") { showVideos() }
+        entry("⚙", "Ajustes", "Imagem, FPS e áudio") { showSettings() }
+        entry("⇧", "Atualizações", "Verificar nova versão") { showUpdates() }
+        entry("ⓘ", "Sobre", "Informações e redes sociais") { showAbout() }
+        val close = actionButton("FECHAR", true) { dialog.dismiss() }
+        panel.addView(close, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 3 })
+        dialog.setContentView(panel)
+        dialog.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            val width = (resources.displayMetrics.widthPixels * 0.88f).toInt()
+            setLayout(width, WindowManager.LayoutParams.WRAP_CONTENT)
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            attributes = attributes.apply { dimAmount = 0.72f }
+        }
+        dialog.show()
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.88f).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
     }
 
     private fun showHome() {
@@ -752,7 +806,7 @@ class MainActivity : Activity() {
         startPage("about", "Sobre o Sakano FF")
         val hero = card().apply {
             setPadding(20, 22, 20, 22)
-            addView(label("SAKANO FF 4.0.1", 22f, white, true))
+            addView(label("SAKANO FF 4.0.2", 22f, white, true))
             space(this, 7)
             addView(label("GRAVADOR LEVE PARA CELULARES DE ENTRADA", 10f, red, true))
             space(this, 13)
