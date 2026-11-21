@@ -11,6 +11,13 @@ import android.graphics.BitmapFactory
 import android.widget.ImageView
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.app.DownloadManager
+import android.database.Cursor
+import android.provider.Settings
+import android.content.pm.PackageManager
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import android.os.*
 import android.provider.MediaStore
 import android.view.Gravity
@@ -30,6 +37,7 @@ class MainActivity : Activity() {
     private var recordButton: Button? = null
     private var pauseButton: Button? = null
     private var errorView: TextView? = null
+    private var pendingInstallUri: Uri? = null
 
     private val bg = Color.rgb(10, 12, 16)
     private val cardColor = Color.rgb(22, 26, 33)
@@ -66,7 +74,151 @@ class MainActivity : Activity() {
         window.statusBarColor = bg
         window.navigationBarColor = bg
         window.decorView.systemUiVisibility = 0
-        showHome()
+        checkForRequiredUpdate()
+    }
+
+    private fun checkForRequiredUpdate() {
+        showUpdateChecking()
+        Thread {
+            try {
+                val connection = (URL("https://api.github.com/repos/cagocagao3-hub/SakanoFF/releases/latest").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 8000; readTimeout = 8000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "SakanoFF-Android")
+                }
+                val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                connection.disconnect()
+                val tag = json.optString("tag_name", "")
+                val assets = json.optJSONArray("assets")
+                var apkUrl: String? = null
+                if (assets != null) for (i in 0 until assets.length()) {
+                    val item = assets.getJSONObject(i)
+                    if (item.optString("name").endsWith(".apk", true)) { apkUrl = item.optString("browser_download_url"); break }
+                }
+                val currentCode = if (Build.VERSION.SDK_INT >= 28) packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt() else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode
+                runOnUiThread {
+                    val currentName = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+                    if (isVersionNewer(tag.removePrefix("v"), currentName) && !apkUrl.isNullOrBlank()) showRequiredUpdate(tag.removePrefix("v"), apkUrl!!)
+                    else showHome()
+                }
+            } catch (_: Exception) {
+                runOnUiThread { showHome() }
+            }
+        }.start()
+    }
+
+    private fun isVersionNewer(remote: String, local: String): Boolean {
+        val a = remote.split(".").map { it.toIntOrNull() ?: 0 }
+        val b = local.split(".").map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val av = a.getOrElse(i) { 0 }; val bv = b.getOrElse(i) { 0 }
+            if (av != bv) return av > bv
+        }
+        return false
+    }
+
+    private fun showUpdateChecking() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(28, 28, 28, 28); setBackgroundColor(bg) }
+        box.addView(label("SAKANO FF", 28f, white, true).apply { gravity = Gravity.CENTER })
+        space(box, 14)
+        box.addView(label("Verificando atualizações...", 15f, muted).apply { gravity = Gravity.CENTER })
+        setContentView(box)
+    }
+
+    private fun showRequiredUpdate(version: String, apkUrl: String) {
+        val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(26, 30, 26, 30); setBackgroundColor(bg) }
+        val panel = card().apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(24, 30, 24, 26) }
+        panel.addView(label("SAKANO FF", 13f, red, true).apply { gravity = Gravity.CENTER })
+        space(panel, 18)
+        panel.addView(label("Uma nova versão está disponível", 25f, white, true).apply { gravity = Gravity.CENTER; textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER })
+        space(panel, 12)
+        panel.addView(label("Versão $version", 17f, green, true).apply { gravity = Gravity.CENTER })
+        space(panel, 12)
+        panel.addView(label("Esta atualização é obrigatória para continuar usando o aplicativo. Atualize para receber as melhorias e correções mais recentes.", 15f, muted).apply { gravity = Gravity.CENTER; textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER })
+        space(panel, 24)
+        panel.addView(actionButton("BAIXAR E ATUALIZAR") { downloadAndInstall(apkUrl) }, LinearLayout.LayoutParams(-1, -2))
+        space(panel, 12)
+        panel.addView(label("A instalação será confirmada pelo Android.", 11f, muted).apply { gravity = Gravity.CENTER })
+        page.addView(panel, LinearLayout.LayoutParams(-1, -2))
+        setContentView(page)
+    }
+
+    private fun downloadAndInstall(apkUrl: String) {
+        try {
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            val request = DownloadManager.Request(Uri.parse(apkUrl))
+                .setTitle("Atualização Sakano FF")
+                .setDescription("Baixando a versão mais recente...")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, "SakanoFF-update.apk")
+                .setAllowedOverMetered(true).setAllowedOverRoaming(false)
+
+            var downloadId = -1L
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
+                    try {
+                        unregisterReceiver(this)
+                        val query = DownloadManager.Query().setFilterById(downloadId)
+                        manager.query(query).use { cursor ->
+                            if (!cursor.moveToFirst() || cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) {
+                                throw Exception("O download não foi concluído. Tente novamente.")
+                            }
+                        }
+                        val uri = manager.getUriForDownloadedFile(downloadId)
+                            ?: throw Exception("Não foi possível localizar o APK baixado.")
+                        openInstaller(uri)
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "Falha na atualização: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+
+            // Registra o receptor antes de iniciar o download para não perder o aviso de conclusão.
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+            }
+            downloadId = manager.enqueue(request)
+            Toast.makeText(this, "Download iniciado. Acompanhe pela notificação.", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Falha ao iniciar atualização: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun openInstaller(uri: Uri) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            pendingInstallUri = uri
+            val settingsIntent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:$packageName")
+            )
+            startActivityForResult(settingsIntent, 4102)
+            Toast.makeText(this, "Permita instalar apps pelo Sakano FF e volte ao aplicativo.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val install = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(install)
+    }
+
+    @Deprecated("Deprecated in Android API, kept for compatibility with Android 8+ installer permission flow")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 4102) {
+            val uri = pendingInstallUri
+            pendingInstallUri = null
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
+                if (uri != null) openInstaller(uri)
+            } else {
+                Toast.makeText(this, "A permissão de instalação não foi concedida.", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onResume() {
