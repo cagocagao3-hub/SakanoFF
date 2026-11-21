@@ -66,7 +66,7 @@ class MainActivity : Activity() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = if (hamburger) white else red
             style = Paint.Style.STROKE
-            strokeWidth = if (hamburger) 2.8f else 2.6f
+            strokeWidth = if (hamburger) 4.2f else 2.6f
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
@@ -77,9 +77,9 @@ class MainActivity : Activity() {
             canvas.translate((width - side) / 2f, (height - side) / 2f)
             canvas.scale(side / 48f, side / 48f)
             if (hamburger) {
-                canvas.drawLine(11f, 15f, 37f, 15f, paint)
-                canvas.drawLine(11f, 24f, 37f, 24f, paint)
-                canvas.drawLine(11f, 33f, 37f, 33f, paint)
+                canvas.drawLine(6f, 13f, 42f, 13f, paint)
+                canvas.drawLine(6f, 24f, 42f, 24f, paint)
+                canvas.drawLine(6f, 35f, 42f, 35f, paint)
             } else when (kind) {
                 "home" -> {
                     val path = Path().apply { moveTo(8f, 23f); lineTo(24f, 9f); lineTo(40f, 23f); moveTo(13f, 21f); lineTo(13f, 39f); lineTo(22f, 39f); lineTo(22f, 29f); lineTo(26f, 29f); lineTo(26f, 39f); lineTo(35f, 39f); lineTo(35f, 21f) }
@@ -359,19 +359,29 @@ class MainActivity : Activity() {
         val menu = SakanoIcon("menu", hamburger = true).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(Color.rgb(28, 33, 42))
-                cornerRadius = 15f
-                setStroke(1, Color.rgb(65, 76, 92))
+                setColor(Color.rgb(25, 30, 39))
+                cornerRadius = 18f
+                setStroke(1, Color.rgb(91, 48, 59))
             }
+            elevation = 5f
             isClickable = true
             isFocusable = true
             contentDescription = "Abrir menu"
             setOnClickListener { openMenu() }
         }
-        header.addView(menu, LinearLayout.LayoutParams(46, 46).apply { rightMargin = 13 })
-        val branding = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        branding.addView(label("SAKANO FF", 21f, white, true))
-        branding.addView(label("GRAVADOR DE TELA", 10f, red, true))
+        header.addView(menu, LinearLayout.LayoutParams(56, 56).apply { rightMargin = 14 })
+        val branding = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val brandTitle = label("SAKANO FF", 23f, white, true).apply {
+            letterSpacing = 0.035f
+        }
+        val brandSubtitle = label("GRAVADOR DE TELA", 11f, red, true).apply {
+            letterSpacing = 0.055f
+        }
+        branding.addView(brandTitle)
+        branding.addView(brandSubtitle)
         header.addView(branding)
         root.addView(header)
         space(root, if (title.isBlank()) 17 else 23)
