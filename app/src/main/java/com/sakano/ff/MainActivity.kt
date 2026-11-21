@@ -400,28 +400,28 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings() {
-        startPage("settings", "Configurações")
+        startPage("settings", "Ajustes")
+        val intro = card().apply {
+            addView(label("CONTROLE DA GRAVAÇÃO", 11f, red, true))
+            space(this, 5)
+            addView(label("Configure a imagem e o áudio do seu vídeo.", 13f, muted))
+        }
+        root.addView(intro, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 14 })
+
         setting("Resolução", "${prefs.getInt("resolution", 720)}p") {
             choose("Resolução", arrayOf("480p", "720p", "1080p", "1440p")) { i ->
-                prefs.edit().putInt("resolution", listOf(480, 720, 1080, 1440)[i]).apply()
-                showSettings()
+                prefs.edit().putInt("resolution", listOf(480, 720, 1080, 1440)[i]).apply(); showSettings()
             }
         }
         setting("Taxa de quadros", "${prefs.getInt("fps", 30)} FPS") {
-            choose("FPS", arrayOf("24 FPS", "30 FPS", "60 FPS")) { i ->
-                prefs.edit().putInt("fps", listOf(24, 30, 60)[i]).apply()
-                showSettings()
+            choose("Taxa de quadros", arrayOf("24 FPS", "30 FPS", "60 FPS")) { i ->
+                prefs.edit().putInt("fps", listOf(24, 30, 60)[i]).apply(); showSettings()
             }
         }
         setting("Qualidade", prefs.getString("quality", "Normal") ?: "Normal") {
             choose("Qualidade do vídeo", arrayOf("Econômica", "Normal", "Alta", "Máxima")) { i ->
-                prefs.edit().putString("quality", listOf("Econômica", "Normal", "Alta", "Máxima")[i]).apply()
-                showSettings()
+                prefs.edit().putString("quality", listOf("Econômica", "Normal", "Alta", "Máxima")[i]).apply(); showSettings()
             }
-        }
-        setting("Modo desempenho para jogos", if (prefs.getBoolean("game_mode", true)) "Ativado • até 720p / 30 FPS" else "Desativado • usa os valores escolhidos") {
-            prefs.edit().putBoolean("game_mode", !prefs.getBoolean("game_mode", true)).apply()
-            showSettings()
         }
         setting("Áudio da gravação", audioModeLabel()) {
             choose("Fonte de áudio", arrayOf("Sem áudio", "Áudio interno", "Microfone")) { i ->
@@ -434,15 +434,9 @@ class MainActivity : Activity() {
         setting("Pasta de gravação", "Movies/Sakano FF") {
             AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
                 .setTitle("Pasta de gravação")
-                .setMessage("Seus arquivos MP4 ficam na pasta Movies/Sakano FF e também aparecem na galeria do aparelho.")
-                .setPositiveButton("OK", null).show()
+                .setMessage("Seus vídeos ficam em Movies/Sakano FF e também aparecem na galeria do aparelho.")
+                .setPositiveButton("Entendi", null).show()
         }
-        space(root, 10)
-        val note = card()
-        root.addView(note)
-        note.addView(label("DICA DE DESEMPENHO", 12f, red, true))
-        space(note, 8)
-        note.addView(label("O perfil jogo limita a captura a 720p e 30 FPS. Use Sem áudio quando quiser reduzir ainda mais o processamento.", 13f, muted))
     }
 
     private fun audioModeLabel(): String = when (prefs.getString("audio_mode", "none")) {
@@ -494,16 +488,28 @@ class MainActivity : Activity() {
     }
 
     private fun showVideos() {
-        startPage("videos", "Biblioteca de vídeos")
+        startPage("videos", "Biblioteca")
         val videos = getVideos()
-        root.addView(label("${videos.size} arquivo(s) • Movies/Sakano FF", 12f, muted))
-        space(root, 12)
+        val summary = card().apply {
+            addView(label("SEUS VÍDEOS", 11f, red, true))
+            space(this, 5)
+            addView(label("${videos.size} ${if (videos.size == 1) "gravação salva" else "gravações salvas"}", 19f, white, true))
+            addView(label("Armazenados em Movies/Sakano FF", 12f, muted))
+        }
+        root.addView(summary, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 14 })
         if (videos.isEmpty()) {
-            val empty = card(); root.addView(empty)
-            empty.addView(label("▣", 40f, red, true))
-            space(empty, 8)
-            empty.addView(label("Sua biblioteca está vazia", 18f, white, true))
-            empty.addView(label("Quando finalizar uma gravação, o vídeo aparecerá aqui.", 12f, muted))
+            val empty = card().apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(22, 30, 22, 30)
+                addView(label("▣", 42f, red, true).apply { gravity = Gravity.CENTER })
+                space(this, 12)
+                addView(label("Sua biblioteca está pronta", 18f, white, true).apply { gravity = Gravity.CENTER })
+                space(this, 5)
+                addView(label("Quando você salvar sua primeira gravação, ela aparecerá aqui para assistir ou compartilhar.", 13f, muted).apply { gravity = Gravity.CENTER; textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER })
+                space(this, 18)
+                addView(actionButton("●  IR PARA GRAVAÇÃO") { showHome() }, LinearLayout.LayoutParams(-1, -2))
+            }
+            root.addView(empty)
             return
         }
         videos.forEach { video ->
@@ -512,55 +518,85 @@ class MainActivity : Activity() {
             space(panel, 5)
             val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(video.date * 1000))
             panel.addView(label("${video.size / 1024 / 1024} MB  •  $date  •  ${formatDuration(video.duration)}", 11f, muted))
-            space(panel, 10)
-            panel.addView(actionButton("▶  REPRODUZIR") {
+            space(panel, 12)
+            panel.addView(actionButton("▶  ASSISTIR") {
                 startActivity(Intent(this, PlaybackActivity::class.java).putExtra("uri", video.uri.toString()))
             })
-            space(panel, 6)
+            space(panel, 7)
             panel.addView(actionButton("↗  COMPARTILHAR", true) {
                 try {
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "video/mp4"; putExtra(Intent.EXTRA_STREAM, video.uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
+                    val send = Intent(Intent.ACTION_SEND).apply { type = "video/mp4"; putExtra(Intent.EXTRA_STREAM, video.uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                     startActivity(Intent.createChooser(send, "Compartilhar vídeo"))
-                } catch (_: Exception) {
-                    Toast.makeText(this, "Não foi possível compartilhar este vídeo.", Toast.LENGTH_SHORT).show()
-                }
+                } catch (_: Exception) { Toast.makeText(this, "Não foi possível compartilhar este vídeo.", Toast.LENGTH_SHORT).show() }
             })
-            space(panel, 6)
+            space(panel, 7)
             panel.addView(actionButton("EXCLUIR VÍDEO", true) {
                 AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Excluir vídeo?")
                     .setMessage(video.name).setNegativeButton("Cancelar", null)
                     .setPositiveButton("Excluir") { _, _ ->
-                        try {
-                            contentResolver.delete(video.uri, null, null)
-                            Toast.makeText(this, "Vídeo excluído.", Toast.LENGTH_SHORT).show()
-                            showVideos()
-                        } catch (_: Exception) {
-                            Toast.makeText(this, "Não foi possível excluir.", Toast.LENGTH_LONG).show()
-                        }
+                        try { contentResolver.delete(video.uri, null, null); Toast.makeText(this, "Vídeo excluído.", Toast.LENGTH_SHORT).show(); showVideos() }
+                        catch (_: Exception) { Toast.makeText(this, "Não foi possível excluir.", Toast.LENGTH_LONG).show() }
                     }.show()
             })
-            val lp = LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = 12
-            root.addView(panel, lp)
+            root.addView(panel, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
         }
     }
 
-    private fun showAbout() {
-        startPage("about", "Ajuda e informações")
-        val panel = card(); root.addView(panel)
-        panel.addView(label("SAKANO FF 3.5", 22f, white, true))
-        space(panel, 8)
-        panel.addView(label("O Sakano FF é um gravador de tela Android que está sendo desenvolvido com foco em celulares fracos e aparelhos de entrada. A proposta é oferecer uma gravação simples, leve e prática, consumindo o mínimo possível de armazenamento e recursos do aparelho.", 13f, muted))
-        space(panel, 10)
-        panel.addView(label("O projeto está em desenvolvimento. Estamos trabalhando para melhorar a estabilidade, reduzir o tamanho do APK e manter funções úteis para quem joga em celulares com pouca memória.", 13f, muted))
-        space(panel, 10)
-        panel.addView(label("Recursos: gravação de tela, biblioteca de vídeos e três opções de áudio: sem áudio, áudio interno (quando permitido pelo jogo) e microfone.", 13f, muted))
-        space(root, 12)
-        val help = card(); root.addView(help)
-        help.addView(label("DICAS RÁPIDAS", 12f, red, true))
-        space(help, 8)
-        help.addView(label("• Use 720p e 30 FPS para jogar.\n• Deixe o microfone desligado se não precisar dele.\n• Evite gravar enquanto o aparelho estiver muito quente.\n• Mantenha espaço livre no armazenamento.\n• Faça um teste curto antes de uma partida importante.", 13f, muted))
+    private fun socialButton(title: String, subtitle: String, symbol: String, url: String, tint: Int) {
+        val panel = card()
+        panel.orientation = LinearLayout.HORIZONTAL
+        panel.gravity = Gravity.CENTER_VERTICAL
+        val icon = TextView(this).apply {
+            text = symbol; textSize = 25f; gravity = Gravity.CENTER; setTextColor(white)
+            background = GradientDrawable().apply { setColor(tint); cornerRadius = 16f }
+        }
+        panel.addView(icon, LinearLayout.LayoutParams(52, 52).apply { rightMargin = 13 })
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(label(title, 15f, white, true))
+        texts.addView(label(subtitle, 11f, muted))
+        panel.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+        panel.addView(label("↗", 23f, red, true))
+        panel.setOnClickListener {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            catch (_: Exception) { Toast.makeText(this, "Não foi possível abrir o link.", Toast.LENGTH_SHORT).show() }
+        }
+        root.addView(panel, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 })
     }
+
+    private fun showAbout() {
+        startPage("about", "Sobre o Sakano FF")
+        val hero = card().apply {
+            setPadding(20, 22, 20, 22)
+            addView(label("SAKANO FF 3.5", 22f, white, true))
+            space(this, 7)
+            addView(label("GRAVADOR FEITO PARA IR MAIS LONGE COM MENOS", 10f, red, true))
+            space(this, 13)
+            addView(label("Um gravador de tela Android em desenvolvimento, pensado especialmente para celulares de entrada e aparelhos com pouca memória.", 14f, muted))
+        }
+        root.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 })
+
+        val mission = card()
+        mission.addView(label("NOSSA PROPOSTA", 11f, red, true))
+        space(mission, 8)
+        mission.addView(label("Ser simples de usar, leve no aparelho e direto ao ponto. O foco é oferecer gravação de tela com controles essenciais, sem encher o aplicativo de recursos desnecessários.", 13f, muted))
+        space(root, 12)
+        root.addView(mission)
+
+        val features = card()
+        features.addView(label("RECURSOS", 11f, red, true))
+        space(features, 8)
+        features.addView(label("• Gravação de tela\n• Biblioteca para assistir e compartilhar\n• Sem áudio, áudio interno quando permitido pelo Android e microfone\n• Ajustes de resolução, FPS e qualidade", 13f, muted))
+        space(root, 12)
+        root.addView(features)
+
+        space(root, 18)
+        root.addView(label("ACOMPANHE O SAKANO FF", 12f, white, true))
+        space(root, 10)
+        socialButton("YouTube", "Vídeos, novidades e demonstrações", "▶", "https://youtube.com/@sakanoffz?feature=shared", Color.rgb(210, 35, 48))
+        socialButton("Instagram", "Acompanhe as atualizações do projeto", "◎", "https://www.instagram.com/sakanoffz?gwpx=MXU2ZW0yc20zMDUzNw==", Color.rgb(155, 65, 145))
+        space(root, 10)
+        val footer = label("SAKANO FF  •  DESENVOLVIMENTO EM ANDAMENTO", 10f, muted, true).apply { gravity = Gravity.CENTER }
+        root.addView(footer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8; bottomMargin = 18 })
+    }
+
 }
