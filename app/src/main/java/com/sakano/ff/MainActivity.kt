@@ -117,7 +117,11 @@ class MainActivity : Activity() {
         recordButton = null
         pauseButton = null
         errorView = null
-        val scroll = ScrollView(this)
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(bg)
+            setFillViewport(true)
+            overScrollMode = android.view.View.OVER_SCROLL_NEVER
+        }
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(18, 20, 18, 28)
@@ -150,9 +154,7 @@ class MainActivity : Activity() {
             "⌂   Início",
             "▣   Meus vídeos",
             "⚙   Configurações",
-            "◷   Estatísticas",
-            "⚡   Desempenho",
-            "ⓘ   Ajuda e informações"
+            "◷   Estatísticas"
         )
         AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle("SAKANO FF")
@@ -162,8 +164,6 @@ class MainActivity : Activity() {
                     1 -> showVideos()
                     2 -> showSettings()
                     3 -> showStats()
-                    4 -> showPerformance()
-                    5 -> showAbout()
                 }
             }
             .setNegativeButton("Fechar", null)
