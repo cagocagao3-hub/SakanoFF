@@ -4,6 +4,10 @@ import android.Manifest
 import android.app.*
 import android.content.*
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.BitmapFactory
@@ -20,6 +24,7 @@ import java.net.URL
 import android.os.*
 import android.provider.MediaStore
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.widget.*
 import java.text.SimpleDateFormat
@@ -55,6 +60,64 @@ class MainActivity : Activity() {
     }
 
     data class VideoItem(val uri: Uri, val name: String, val size: Long, val date: Long, val duration: Long)
+
+    /** Ícones vetoriais desenhados no próprio app: nítidos em qualquer densidade e sem fontes de símbolos. */
+    private inner class SakanoIcon(private val kind: String, private val hamburger: Boolean = false) : View(this@MainActivity) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = if (hamburger) white else red
+            style = Paint.Style.STROKE
+            strokeWidth = if (hamburger) 2.8f else 2.6f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val side = minOf(width, height).toFloat()
+            val save = canvas.save()
+            canvas.translate((width - side) / 2f, (height - side) / 2f)
+            canvas.scale(side / 48f, side / 48f)
+            if (hamburger) {
+                canvas.drawLine(11f, 15f, 37f, 15f, paint)
+                canvas.drawLine(11f, 24f, 37f, 24f, paint)
+                canvas.drawLine(11f, 33f, 37f, 33f, paint)
+            } else when (kind) {
+                "home" -> {
+                    val path = Path().apply { moveTo(8f, 23f); lineTo(24f, 9f); lineTo(40f, 23f); moveTo(13f, 21f); lineTo(13f, 39f); lineTo(22f, 39f); lineTo(22f, 29f); lineTo(26f, 29f); lineTo(26f, 39f); lineTo(35f, 39f); lineTo(35f, 21f) }
+                    canvas.drawPath(path, paint)
+                }
+                "library" -> {
+                    val r = RectF(8f, 12f, 40f, 38f)
+                    canvas.drawRoundRect(r, 4f, 4f, paint)
+                    canvas.drawLine(8f, 19f, 40f, 19f, paint)
+                    canvas.drawLine(18f, 25f, 18f, 32f, paint)
+                    canvas.drawLine(30f, 25f, 30f, 32f, paint)
+                }
+                "settings" -> {
+                    canvas.drawCircle(24f, 24f, 8f, paint)
+                    for (a in 0..7) {
+                        val angle = Math.toRadians((a * 45).toDouble())
+                        val x1 = 24f + (11f * kotlin.math.cos(angle)).toFloat()
+                        val y1 = 24f + (11f * kotlin.math.sin(angle)).toFloat()
+                        val x2 = 24f + (16f * kotlin.math.cos(angle)).toFloat()
+                        val y2 = 24f + (16f * kotlin.math.sin(angle)).toFloat()
+                        canvas.drawLine(x1, y1, x2, y2, paint)
+                    }
+                }
+                "updates" -> {
+                    canvas.drawArc(RectF(10f, 10f, 38f, 38f), 205f, 250f, false, paint)
+                    val p1 = Path().apply { moveTo(9f, 13f); lineTo(10f, 23f); lineTo(19f, 20f) }
+                    val p2 = Path().apply { moveTo(39f, 35f); lineTo(38f, 25f); lineTo(29f, 28f) }
+                    canvas.drawPath(p1, paint); canvas.drawPath(p2, paint)
+                }
+                else -> {
+                    canvas.drawCircle(24f, 24f, 15f, paint)
+                    canvas.drawCircle(24f, 16f, 1.5f, paint)
+                    canvas.drawLine(24f, 22f, 24f, 32f, paint)
+                }
+            }
+            canvas.restoreToCount(save)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -293,15 +356,12 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val menu = TextView(this).apply {
-            text = "☰"
-            textSize = 21f
-            gravity = Gravity.CENTER
-            setTextColor(white)
+        val menu = SakanoIcon("menu", hamburger = true).apply {
             background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.rgb(34, 39, 49))
-                setStroke(1, Color.rgb(66, 75, 91))
+                shape = GradientDrawable.RECTANGLE
+                setColor(Color.rgb(28, 33, 42))
+                cornerRadius = 15f
+                setStroke(1, Color.rgb(65, 76, 92))
             }
             isClickable = true
             isFocusable = true
@@ -309,13 +369,6 @@ class MainActivity : Activity() {
             setOnClickListener { openMenu() }
         }
         header.addView(menu, LinearLayout.LayoutParams(46, 46).apply { rightMargin = 13 })
-        val logo = ImageView(this).apply {
-            setImageResource(com.sakano.ff.R.drawable.sakano_logo)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(cardColor); setStroke(2, red) }
-            clipToOutline = true
-        }
-        header.addView(logo, LinearLayout.LayoutParams(54, 54).apply { rightMargin = 12 })
         val branding = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         branding.addView(label("SAKANO FF", 21f, white, true))
         branding.addView(label("GRAVADOR DE TELA", 10f, red, true))
@@ -358,12 +411,20 @@ class MainActivity : Activity() {
                 isFocusable = true
                 setOnClickListener { dialog.dismiss(); action() }
             }
-            val glyph = TextView(this).apply {
-                text = symbol
-                textSize = 21f
-                gravity = Gravity.CENTER
-                setTextColor(red)
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(53, 30, 38)) }
+            val iconKind = when (title) {
+                "Início" -> "home"
+                "Biblioteca" -> "library"
+                "Ajustes" -> "settings"
+                "Atualizações" -> "updates"
+                else -> "about"
+            }
+            val glyph = SakanoIcon(iconKind).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    setColor(Color.rgb(48, 29, 37))
+                    cornerRadius = 13f
+                }
+                contentDescription = title
             }
             item.addView(glyph, LinearLayout.LayoutParams(42, 42).apply { rightMargin = 13 })
             val copy = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -374,11 +435,11 @@ class MainActivity : Activity() {
             panel.addView(item, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 9 })
         }
 
-        entry("⌂", "Início", "Controles de gravação") { showHome() }
-        entry("▣", "Biblioteca", "Vídeos salvos") { showVideos() }
-        entry("⚙", "Ajustes", "Imagem, FPS e áudio") { showSettings() }
-        entry("⇧", "Atualizações", "Verificar nova versão") { showUpdates() }
-        entry("ⓘ", "Sobre", "Informações e redes sociais") { showAbout() }
+        entry("", "Início", "Controles de gravação") { showHome() }
+        entry("", "Biblioteca", "Vídeos salvos") { showVideos() }
+        entry("", "Ajustes", "Imagem, FPS e áudio") { showSettings() }
+        entry("", "Atualizações", "Verificar nova versão") { showUpdates() }
+        entry("", "Sobre", "Informações e redes sociais") { showAbout() }
         val close = actionButton("FECHAR", true) { dialog.dismiss() }
         panel.addView(close, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 3 })
         dialog.setContentView(panel)
