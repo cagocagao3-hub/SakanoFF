@@ -4,107 +4,117 @@ import android.Manifest
 import android.app.*
 import android.content.*
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.*
 import android.provider.MediaStore
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.view.*
+import android.view.Gravity
 import android.widget.*
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
+import android.os.StatFs
 
 class MainActivity : Activity() {
-
-    private lateinit var root: LinearLayout
     private lateinit var prefs: android.content.SharedPreferences
+    private lateinit var root: LinearLayout
     private var currentPage = "home"
     private var pendingRecording = false
+    private var statusView: TextView? = null
+    private var timerView: TextView? = null
+    private var recordButton: Button? = null
+    private var pauseButton: Button? = null
+    private var errorView: TextView? = null
 
-    private val RED = Color.rgb(222, 37, 55)
-    private val BG = Color.rgb(12, 12, 12)
-    private val CARD = Color.rgb(25, 25, 25)
-    private val WHITE = Color.WHITE
-    private val MUTED = Color.rgb(155, 155, 155)
+    private val bg = Color.rgb(10, 12, 16)
+    private val cardColor = Color.rgb(22, 26, 33)
+    private val white = Color.WHITE
+    private val muted = Color.rgb(151, 161, 176)
+    private val red = Color.rgb(239, 55, 72)
+    private val green = Color.rgb(42, 203, 119)
+    private val amber = Color.rgb(255, 177, 66)
+    private val handler = Handler(Looper.getMainLooper())
+    private val ticker = object : Runnable {
+        override fun run() {
+            if (!isFinishing && currentPage == "home") refreshHomeStatus()
+            handler.postDelayed(this, 500)
+        }
+    }
 
-    data class VideoItem(
-        val uri: Uri,
-        val name: String,
-        val size: Long,
-        val date: Long,
-        val duration: Long
-    )
+    data class VideoItem(val uri: Uri, val name: String, val size: Long, val date: Long, val duration: Long)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         prefs = getSharedPreferences("sakano_settings", MODE_PRIVATE)
-
-        window.statusBarColor = BG
-        window.navigationBarColor = BG
-
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+        window.decorView.systemUiVisibility = 0
         showHome()
     }
 
-    private fun label(
-        value: String,
-        size: Float,
-        color: Int = WHITE,
-        bold: Boolean = false
-    ) = TextView(this).apply {
-        text = value
-        textSize = size
-        setTextColor(color)
-        if (bold) setTypeface(null, Typeface.BOLD)
+    override fun onResume() {
+        super.onResume()
+        if (::prefs.isInitialized && currentPage == "home") refreshHomeStatus()
     }
 
-    private fun space(height: Int) {
-        root.addView(View(this), LinearLayout.LayoutParams(1, height))
+    override fun onDestroy() {
+        handler.removeCallbacks(ticker)
+        super.onDestroy()
     }
 
-    private fun card(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(17, 17, 17, 17)
-            background = GradientDrawable().apply {
-                setColor(CARD)
-                cornerRadius = 22f
-                setStroke(1, Color.rgb(48, 48, 48))
-            }
+    private fun label(text: String, size: Float, color: Int = white, bold: Boolean = false): TextView =
+        TextView(this).apply {
+            this.text = text
+            textSize = size
+            setTextColor(color)
+            if (bold) setTypeface(null, Typeface.BOLD)
+        }
+
+    private fun space(parent: LinearLayout, height: Int) {
+        parent.addView(android.view.View(this), LinearLayout.LayoutParams(1, height))
+    }
+
+    private fun card(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(18, 18, 18, 18)
+        background = GradientDrawable().apply {
+            setColor(cardColor)
+            cornerRadius = 22f
+            setStroke(1, Color.rgb(42, 49, 60))
         }
     }
 
-    private fun actionButton(
-        title: String,
-        secondary: Boolean = false,
-        action: () -> Unit
-    ): Button {
-        return Button(this).apply {
+    private fun actionButton(title: String, secondary: Boolean = false, action: () -> Unit): Button =
+        Button(this).apply {
             text = title
-            textSize = 13f
+            textSize = 14f
             isAllCaps = false
-            setTextColor(WHITE)
+            setTextColor(white)
             background = GradientDrawable().apply {
-                setColor(if (secondary) 0xFF303030.toInt() else RED)
-                cornerRadius = 15f
+                setColor(if (secondary) Color.rgb(43, 51, 63) else red)
+                cornerRadius = 16f
             }
-            setPadding(12, 8, 12, 8)
+            setPadding(14, 10, 14, 10)
+            minHeight = 52
             setOnClickListener { action() }
         }
-    }
 
-    private fun startPage(title: String) {
-        currentPage = title
-
+    private fun startPage(key: String, title: String) {
+        currentPage = key
+        statusView = null
+        timerView = null
+        recordButton = null
+        pauseButton = null
+        errorView = null
         val scroll = ScrollView(this)
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(19, 20, 19, 28)
-            setBackgroundColor(BG)
+            setPadding(18, 20, 18, 28)
+            setBackgroundColor(bg)
         }
-
         scroll.addView(root)
         setContentView(scroll)
 
@@ -112,47 +122,31 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-
-        val menu = TextView(this).apply {
-            text = "☰"
-            textSize = 29f
-            setTextColor(WHITE)
+        val menu = label("☰", 28f, white, true).apply {
             setPadding(0, 0, 18, 0)
             setOnClickListener { openMenu() }
         }
-
         header.addView(menu)
-
-        val titleBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        titleBox.addView(label("SAKANO FF", 21f, WHITE, true))
-        titleBox.addView(label("SCREEN RECORDER", 10f, RED, true))
-
-        header.addView(titleBox)
+        val branding = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        branding.addView(label("SAKANO FF", 21f, white, true))
+        branding.addView(label("SCREEN RECORDER  •  MOBILE", 9f, red, true))
+        header.addView(branding)
         root.addView(header)
-
-        space(27)
-
-        root.addView(label(title, 24f, WHITE, true))
-        space(5)
+        space(root, 25)
+        root.addView(label(title, 24f, white, true))
+        space(root, 5)
     }
 
     private fun openMenu() {
-        val options = arrayOf(
-            "⌂   Início",
-            "▣   Seus Vídeos",
-            "⚙   Configurações"
-        )
-
-        AlertDialog.Builder(this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+        val options = arrayOf("⌂   Início", "▣   Meus vídeos", "⚙   Configurações", "ⓘ   Sobre o Sakano FF")
+        AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle("SAKANO FF")
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> showHome()
                     1 -> showVideos()
                     2 -> showSettings()
+                    3 -> showAbout()
                 }
             }
             .setNegativeButton("Fechar", null)
@@ -160,530 +154,329 @@ class MainActivity : Activity() {
     }
 
     private fun showHome() {
-        startPage("Sua central de gravação")
+        startPage("home", "Central de gravação")
+        root.addView(label("Tudo pronto para capturar sua tela.", 13f, muted))
+        space(root, 18)
 
         val panel = card()
         root.addView(panel)
+        panel.addView(label("STATUS DA GRAVAÇÃO", 11f, muted, true))
+        space(panel, 13)
+        statusView = label("Pronto para gravar", 23f, white, true)
+        panel.addView(statusView)
+        space(panel, 6)
+        timerView = label("00:00:00", 34f, white, true).apply { letterSpacing = 0.06f }
+        panel.addView(timerView)
+        errorView = label("", 12f, red)
+        panel.addView(errorView)
+        space(panel, 15)
+        recordButton = actionButton("●  INICIAR GRAVAÇÃO") { onRecordButton() }
+        panel.addView(recordButton)
+        space(panel, 8)
+        pauseButton = actionButton("Ⅱ  PAUSAR GRAVAÇÃO", true) { togglePause() }
+        panel.addView(pauseButton)
+        space(panel, 8)
+        panel.addView(label("Os vídeos são salvos automaticamente em Movies/Sakano FF.", 11f, muted))
 
-        panel.addView(label("STATUS DO GRAVADOR", 11f, MUTED, true))
-        spaceIn(panel, 12)
-        val recordingStatus = prefs.getString(
-            "recording_status",
-            "Pronto"
-        ) ?: "Pronto"
+        space(root, 16)
+        val config = card()
+        root.addView(config)
+        config.addView(label("CONFIGURAÇÃO ATUAL", 11f, red, true))
+        space(config, 9)
+        config.addView(label("${prefs.getInt("resolution", 720)}p  •  ${prefs.getInt("fps", 30)} FPS", 21f, white, true))
+        config.addView(label("${prefs.getString("quality", "Alta")} qualidade  •  ${if (prefs.getBoolean("audio", false)) "Microfone ligado" else "Sem microfone"}", 12f, muted))
 
-        val statusText = when (recordingStatus) {
-            "Gravando" -> "●  Gravando agora"
-            "Preparando" -> "Preparando gravação..."
-            "Finalizando" -> "Finalizando vídeo..."
-            "Erro" -> "Falha na gravação"
-            else -> "Pronto para gravar"
-        }
-
-        val statusColor = if (recordingStatus == "Gravando") {
-            Color.rgb(60, 210, 110)
-        } else if (recordingStatus == "Erro") {
-            RED
-        } else {
-            WHITE
-        }
-
-        panel.addView(label(statusText, 22f, statusColor, true))
-
-        if (recordingStatus == "Erro") {
-            val error = prefs.getString("recording_error", "") ?: ""
-            if (error.isNotBlank()) {
-                panel.addView(label(error, 12f, RED))
-            }
-        }
-        panel.addView(label(
-            "Seus vídeos serão salvos na galeria do celular.",
-            12f, MUTED
-        ))
-
-        spaceIn(panel, 18)
-
-        panel.addView(actionButton("●   INICIAR GRAVAÇÃO") {
-            checkAudioPermission()
-        })
-
-        spaceIn(panel, 8)
-
-        panel.addView(actionButton(
-            "■   PARAR GRAVAÇÃO",
-            true
-        ) {
-            stopRecording()
-        })
-
-        space(20)
-
-        val quick = card()
-        root.addView(quick)
-
-        quick.addView(label("CONFIGURAÇÃO ATUAL", 12f, RED, true))
-        spaceIn(quick, 10)
-
-        quick.addView(label(
-            "${prefs.getInt("resolution", 720)}p  •  " +
-            "${prefs.getInt("fps", 30)} FPS",
-            23f, WHITE, true
-        ))
-
-        quick.addView(label(
-            if (prefs.getBoolean("audio", false))
-                "Áudio do microfone ativado"
-            else "Gravação sem áudio do microfone",
-            12f, MUTED
-        ))
-
-        space(18)
-
-        root.addView(actionButton("▣   ABRIR MEUS VÍDEOS") {
-            showVideos()
-        })
-
-        space(8)
-
-        root.addView(actionButton("⚙   CONFIGURAÇÕES") {
-            showSettings()
-        }, LinearLayout.LayoutParams(
-            -1, -2
-        ).apply {
-            topMargin = 8
-        })
-
-        space(25)
-
-        root.addView(label("SAKANO FF  •  VERSÃO 2.0", 11f, MUTED))
+        space(root, 16)
+        val stats = card()
+        root.addView(stats)
+        stats.addView(label("ARMAZENAMENTO DISPONÍVEL", 11f, muted, true))
+        space(stats, 7)
+        stats.addView(label(availableStorage(), 20f, white, true))
+        stats.addView(label("${getVideos().size} vídeo(s) salvos no Sakano FF", 12f, muted))
+        space(root, 18)
+        root.addView(label("SAKANO FF  •  VERSÃO 3.0", 10f, muted))
+        refreshHomeStatus()
+        handler.removeCallbacks(ticker)
+        handler.post(ticker)
     }
 
-    private fun spaceIn(parent: LinearLayout, height: Int) {
-        parent.addView(View(this), LinearLayout.LayoutParams(1, height))
+    private fun availableStorage(): String = try {
+        val path = android.os.Environment.getExternalStorageDirectory().path
+        val stat = StatFs(path)
+        val bytes = stat.availableBytes
+        val gb = bytes / (1024.0 * 1024.0 * 1024.0)
+        String.format(Locale.getDefault(), "%.1f GB livres", gb)
+    } catch (_: Exception) { "Não disponível" }
+
+    private fun formatDuration(ms: Long): String {
+        val seconds = (ms.coerceAtLeast(0L) / 1000L)
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+    }
+
+    private fun refreshHomeStatus() {
+        if (currentPage != "home" || statusView == null) return
+        val status = prefs.getString("recording_status", "Pronto") ?: "Pronto"
+        val base = prefs.getLong("recording_elapsed_base", 0L)
+        val started = prefs.getLong("recording_started_at", 0L)
+        val elapsed = if (status == "Gravando" && started > 0L) base + (SystemClock.elapsedRealtime() - started) else base
+        timerView?.text = formatDuration(elapsed)
+        when (status) {
+            "Gravando" -> {
+                statusView?.text = "●  GRAVANDO"
+                statusView?.setTextColor(red)
+                recordButton?.text = "■  PARAR E SALVAR"
+                pauseButton?.text = "Ⅱ  PAUSAR GRAVAÇÃO"
+                pauseButton?.isEnabled = true
+            }
+            "Pausado" -> {
+                statusView?.text = "Ⅱ  PAUSADO"
+                statusView?.setTextColor(amber)
+                recordButton?.text = "■  PARAR E SALVAR"
+                pauseButton?.text = "▶  CONTINUAR GRAVAÇÃO"
+                pauseButton?.isEnabled = true
+            }
+            "Preparando", "Finalizando" -> {
+                statusView?.text = if (status == "Preparando") "PREPARANDO..." else "SALVANDO VÍDEO..."
+                statusView?.setTextColor(amber)
+                recordButton?.text = "AGUARDE..."
+                pauseButton?.isEnabled = false
+            }
+            "Erro" -> {
+                statusView?.text = "FALHA NA GRAVAÇÃO"
+                statusView?.setTextColor(red)
+                recordButton?.text = "●  TENTAR NOVAMENTE"
+                pauseButton?.isEnabled = false
+            }
+            else -> {
+                statusView?.text = "Pronto para gravar"
+                statusView?.setTextColor(white)
+                recordButton?.text = "●  INICIAR GRAVAÇÃO"
+                pauseButton?.text = "Ⅱ  PAUSAR GRAVAÇÃO"
+                pauseButton?.isEnabled = false
+            }
+        }
+        val error = prefs.getString("recording_error", "") ?: ""
+        errorView?.text = error
+    }
+
+    private fun onRecordButton() {
+        val status = prefs.getString("recording_status", "Pronto") ?: "Pronto"
+        if (status == "Gravando" || status == "Pausado") {
+            stopRecording()
+        } else if (status == "Preparando" || status == "Finalizando") {
+            Toast.makeText(this, "Aguarde a operação atual.", Toast.LENGTH_SHORT).show()
+        } else {
+            checkAudioPermission()
+        }
+    }
+
+    private fun togglePause() {
+        val status = prefs.getString("recording_status", "Pronto")
+        val action = if (status == "Pausado") RecordingService.ACTION_RESUME else RecordingService.ACTION_PAUSE
+        if (status == "Gravando" || status == "Pausado") {
+            startService(Intent(this, RecordingService::class.java).setAction(action))
+        }
     }
 
     private fun checkAudioPermission() {
-        if (
-            prefs.getBoolean("audio", false) &&
-            Build.VERSION.SDK_INT >= 23 &&
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (prefs.getBoolean("audio", false) && Build.VERSION.SDK_INT >= 23 &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             pendingRecording = true
-            requestPermissions(
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                201
-            )
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 201)
             return
         }
-
         launchProjection()
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-
         if (requestCode == 201 && pendingRecording) {
             pendingRecording = false
-
-            if (grantResults.isNotEmpty() &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED
-            ) {
-                launchProjection()
-            } else {
-                Toast.makeText(
-                    this,
-                    "Permissão de microfone não concedida.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) launchProjection()
+            else Toast.makeText(this, "Permissão de microfone não concedida. Você pode desativar o áudio nas configurações.", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun launchProjection() {
-        prefs.edit()
-            .putString("recording_status", "Preparando")
-            .putString("recording_error", "")
-            .apply()
-
-        val manager = getSystemService(MEDIA_PROJECTION_SERVICE)
-            as MediaProjectionManager
-
-        startActivityForResult(
-            manager.createScreenCaptureIntent(),
-            101
-        )
+        prefs.edit().putString("recording_status", "Preparando").putString("recording_error", "").putLong("recording_elapsed_base", 0L).apply()
+        refreshHomeStatus()
+        val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        startActivityForResult(manager.createScreenCaptureIntent(), 101)
     }
 
     @Deprecated("Activity result compatibility")
-    override fun onActivityResult(
-        requestCode: Int,
-        resultCode: Int,
-        data: Intent?
-    ) {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-
-        if (requestCode == 101) {
-            if (resultCode == RESULT_OK && data != null) {
-                val intent = Intent(this, RecordingService::class.java).apply {
-                    putExtra("code", resultCode)
-                    putExtra("data", data)
-                    putExtra("audio", prefs.getBoolean("audio", false))
-                    putExtra("resolution", prefs.getInt("resolution", 720))
-                    putExtra("fps", prefs.getInt("fps", 30))
-                }
-
-                if (Build.VERSION.SDK_INT >= 26) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
-
-                Toast.makeText(
-                    this,
-                    "Gravação iniciada!",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                prefs.edit()
-                    .putString("recording_status", "Pronto")
-                    .apply()
-
-                Toast.makeText(
-                    this,
-                    "Gravação cancelada.",
-                    Toast.LENGTH_SHORT
-                ).show()
+        if (requestCode != 101) return
+        if (resultCode == RESULT_OK && data != null) {
+            val serviceIntent = Intent(this, RecordingService::class.java).apply {
+                putExtra("code", resultCode)
+                putExtra("data", data)
+                putExtra("audio", prefs.getBoolean("audio", false))
+                putExtra("resolution", prefs.getInt("resolution", 720))
+                putExtra("fps", prefs.getInt("fps", 30))
             }
+            try {
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(serviceIntent) else startService(serviceIntent)
+            } catch (e: Exception) {
+                prefs.edit().putString("recording_status", "Erro").putString("recording_error", e.message ?: "Não foi possível iniciar o serviço.").apply()
+            }
+        } else {
+            prefs.edit().putString("recording_status", "Pronto").putString("recording_error", "Autorização de captura cancelada.").apply()
         }
+        refreshHomeStatus()
     }
 
     private fun stopRecording() {
-        startService(
-            Intent(this, RecordingService::class.java).apply {
-                action = RecordingService.ACTION_STOP
-            }
-        )
-
-        Toast.makeText(
-            this,
-            "Solicitação para finalizar gravação enviada.",
-            Toast.LENGTH_SHORT
-        ).show()
+        try {
+            startService(Intent(this, RecordingService::class.java).setAction(RecordingService.ACTION_STOP))
+        } catch (e: Exception) {
+            prefs.edit().putString("recording_error", e.message ?: "Não foi possível parar a gravação.").apply()
+        }
     }
 
     private fun showSettings() {
-        startPage("Configurações")
-
-        setting(
-            "Resolução",
-            "${prefs.getInt("resolution", 720)}p"
-        ) {
-            choose(
-                "Escolha a resolução",
-                arrayOf("480p", "720p", "1080p", "1440p")
-            ) { index ->
-                prefs.edit().putInt(
-                    "resolution",
-                    listOf(480, 720, 1080, 1440)[index]
-                ).apply()
+        startPage("settings", "Configurações")
+        setting("Resolução", "${prefs.getInt("resolution", 720)}p") {
+            choose("Resolução", arrayOf("480p", "720p", "1080p", "1440p")) { i ->
+                prefs.edit().putInt("resolution", listOf(480, 720, 1080, 1440)[i]).apply()
                 showSettings()
             }
         }
-
-        setting(
-            "Taxa de quadros",
-            "${prefs.getInt("fps", 30)} FPS"
-        ) {
-            choose(
-                "Escolha o FPS",
-                arrayOf("24 FPS", "30 FPS", "60 FPS")
-            ) { index ->
-                prefs.edit().putInt(
-                    "fps",
-                    listOf(24, 30, 60)[index]
-                ).apply()
+        setting("Taxa de quadros", "${prefs.getInt("fps", 30)} FPS") {
+            choose("FPS", arrayOf("24 FPS", "30 FPS", "60 FPS")) { i ->
+                prefs.edit().putInt("fps", listOf(24, 30, 60)[i]).apply()
                 showSettings()
             }
         }
-
-        setting(
-            "Qualidade de vídeo",
-            prefs.getString("quality", "Alta") ?: "Alta"
-        ) {
-            choose(
-                "Qualidade",
-                arrayOf("Econômica", "Normal", "Alta", "Máxima")
-            ) { index ->
-                prefs.edit().putString(
-                    "quality",
-                    listOf("Econômica", "Normal", "Alta", "Máxima")[index]
-                ).apply()
+        setting("Qualidade", prefs.getString("quality", "Alta") ?: "Alta") {
+            choose("Qualidade do vídeo", arrayOf("Econômica", "Normal", "Alta", "Máxima")) { i ->
+                prefs.edit().putString("quality", listOf("Econômica", "Normal", "Alta", "Máxima")[i]).apply()
                 showSettings()
             }
         }
-
-        setting(
-            "Áudio do microfone",
-            if (prefs.getBoolean("audio", false)) "Ativado" else "Desativado"
-        ) {
+        setting("Microfone", if (prefs.getBoolean("audio", false)) "Ativado" else "Desativado") {
             val next = !prefs.getBoolean("audio", false)
             prefs.edit().putBoolean("audio", next).apply()
             showSettings()
         }
-
-        setting(
-            "Pasta de destino",
-            "Movies/Sakano FF"
-        ) {
-            AlertDialog.Builder(this)
-                .setTitle("Pasta de destino")
-                .setMessage(
-                    "Os vídeos serão salvos na pasta Movies/Sakano FF " +
-                    "da galeria do aparelho."
-                )
-                .setPositiveButton("Entendi", null)
-                .show()
+        setting("Pasta de gravação", "Movies/Sakano FF") {
+            AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                .setTitle("Pasta de gravação")
+                .setMessage("Seus arquivos MP4 ficam na pasta Movies/Sakano FF e também aparecem na galeria do aparelho.")
+                .setPositiveButton("OK", null).show()
         }
-
-        space(18)
-
-        val info = card()
-        root.addView(info)
-        info.addView(label("DESEMPENHO", 13f, RED, true))
-        spaceIn(info, 10)
-        info.addView(label(
-            "A resolução e o FPS podem ser limitados pelo hardware. " +
-            "Para aparelhos com pouca memória, recomendamos 720p e 30 FPS.",
-            13f, MUTED
-        ))
+        space(root, 10)
+        val note = card()
+        root.addView(note)
+        note.addView(label("DICA DE DESEMPENHO", 12f, red, true))
+        space(note, 8)
+        note.addView(label("Para aparelhos de entrada, use 720p, 30 FPS e qualidade Normal. A disponibilidade de 1080p, 1440p e 60 FPS depende do aparelho.", 13f, muted))
     }
 
-    private fun setting(
-        title: String,
-        value: String,
-        action: () -> Unit
-    ) {
+    private fun setting(title: String, value: String, action: () -> Unit) {
         val panel = card()
-
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val texts = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        texts.addView(label(title, 15f, WHITE, true))
-        texts.addView(label(value, 12f, MUTED))
-
-        row.addView(
-            texts,
-            LinearLayout.LayoutParams(0, -2, 1f)
-        )
-
-        row.addView(label("›", 27f, RED, true))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val textCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        textCol.addView(label(title, 15f, white, true))
+        textCol.addView(label(value, 12f, muted))
+        row.addView(textCol, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(label("›", 28f, red, true))
         panel.addView(row)
-
         panel.setOnClickListener { action() }
-
-        val params = LinearLayout.LayoutParams(-1, -2)
-        params.bottomMargin = 10
-        root.addView(panel, params)
+        val lp = LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = 10
+        root.addView(panel, lp)
     }
 
-    private fun choose(
-        title: String,
-        options: Array<String>,
-        selected: (Int) -> Unit
-    ) {
-        AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-            .setTitle(title)
-            .setItems(options) { _, index -> selected(index) }
-            .setNegativeButton("Cancelar", null)
-            .show()
+    private fun choose(title: String, options: Array<String>, selected: (Int) -> Unit) {
+        AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle(title)
+            .setItems(options) { _, index -> selected(index) }.setNegativeButton("Cancelar", null).show()
     }
 
     private fun getVideos(): List<VideoItem> {
         val result = mutableListOf<VideoItem>()
-
         if (Build.VERSION.SDK_INT >= 29) {
             val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-
-            val projection = arrayOf(
-                MediaStore.Video.Media._ID,
-                MediaStore.Video.Media.DISPLAY_NAME,
-                MediaStore.Video.Media.SIZE,
-                MediaStore.Video.Media.DATE_ADDED,
-                MediaStore.Video.Media.DURATION
-            )
-
+            val projection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DATE_ADDED, MediaStore.Video.Media.DURATION)
             try {
-                contentResolver.query(
-                    collection,
-                    projection,
-                    "${MediaStore.Video.Media.RELATIVE_PATH}=?",
-                    arrayOf("Movies/Sakano FF/"),
-                    "${MediaStore.Video.Media.DATE_ADDED} DESC"
-                )?.use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val id = cursor.getLong(0)
-                        val name = cursor.getString(1) ?: "Vídeo"
-                        val size = cursor.getLong(2)
-                        val date = cursor.getLong(3)
-                        val duration = cursor.getLong(4)
-
-                        val uri = Uri.withAppendedPath(
-                            collection,
-                            id.toString()
-                        )
-
-                        result.add(
-                            VideoItem(uri, name, size, date, duration)
-                        )
+                contentResolver.query(collection, projection, "${MediaStore.Video.Media.RELATIVE_PATH}=?", arrayOf("Movies/Sakano FF/"), "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { c ->
+                    while (c.moveToNext()) {
+                        val uri = Uri.withAppendedPath(collection, c.getLong(0).toString())
+                        result.add(VideoItem(uri, c.getString(1) ?: "Vídeo", c.getLong(2), c.getLong(3), c.getLong(4)))
                     }
                 }
             } catch (_: Exception) {}
         } else {
-            val directory = java.io.File(
-                android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_MOVIES
-                ),
-                "Sakano FF"
-            )
-
-            directory.listFiles()?.filter {
-                it.extension.equals("mp4", true)
-            }?.sortedByDescending {
-                it.lastModified()
-            }?.forEach { file ->
-                val uri = androidx.core.content.FileProvider.getUriForFile(
-                    this,
-                    "com.sakano.ff.provider",
-                    file
-                )
-
-                result.add(
-                    VideoItem(
-                        uri,
-                        file.name,
-                        file.length(),
-                        file.lastModified() / 1000,
-                        0
-                    )
-                )
+            val dir = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MOVIES), "Sakano FF")
+            dir.listFiles()?.filter { it.extension.equals("mp4", true) }?.sortedByDescending { it.lastModified() }?.forEach { file ->
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, "com.sakano.ff.provider", file)
+                result.add(VideoItem(uri, file.name, file.length(), file.lastModified() / 1000, 0))
             }
         }
-
         return result
     }
 
     private fun showVideos() {
-        startPage("Seus Vídeos")
-
+        startPage("videos", "Biblioteca de vídeos")
         val videos = getVideos()
-
+        root.addView(label("${videos.size} arquivo(s) • Movies/Sakano FF", 12f, muted))
+        space(root, 12)
         if (videos.isEmpty()) {
-            val empty = card()
-            root.addView(empty)
-
-            empty.gravity = Gravity.CENTER
-            empty.addView(label("▣", 42f, RED, true))
-            empty.addView(label(
-                "Nenhum vídeo encontrado",
-                18f, WHITE, true
-            ))
-            empty.addView(label(
-                "Quando você gravar, seus vídeos aparecerão aqui e na galeria do celular.",
-                12f, MUTED
-            ))
-
+            val empty = card(); root.addView(empty)
+            empty.addView(label("▣", 40f, red, true))
+            space(empty, 8)
+            empty.addView(label("Sua biblioteca está vazia", 18f, white, true))
+            empty.addView(label("Quando finalizar uma gravação, o vídeo aparecerá aqui.", 12f, muted))
             return
         }
-
-        root.addView(label(
-            "${videos.size} vídeo(s) encontrados",
-            13f, MUTED
-        ))
-
-        space(12)
-
         videos.forEach { video ->
             val panel = card()
-
-            panel.addView(label("▶  ${video.name}", 15f, WHITE, true))
-
-            val date = SimpleDateFormat(
-                "dd/MM/yyyy HH:mm",
-                Locale.getDefault()
-            ).format(Date(video.date * 1000))
-
-            panel.addView(label(
-                "${video.size / 1024 / 1024} MB  •  $date",
-                11f, MUTED
-            ))
-
-            spaceIn(panel, 10)
-
+            panel.addView(label(video.name, 15f, white, true))
+            space(panel, 5)
+            val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(video.date * 1000))
+            panel.addView(label("${video.size / 1024 / 1024} MB  •  $date  •  ${formatDuration(video.duration)}", 11f, muted))
+            space(panel, 10)
             panel.addView(actionButton("▶  REPRODUZIR") {
-                startActivity(
-                    Intent(this, PlaybackActivity::class.java)
-                        .putExtra("uri", video.uri.toString())
-                )
+                startActivity(Intent(this, PlaybackActivity::class.java).putExtra("uri", video.uri.toString()))
             })
-
-            spaceIn(panel, 5)
-
-            panel.addView(actionButton(
-                "EXCLUIR VÍDEO",
-                true
-            ) {
-                AlertDialog.Builder(this)
-                    .setTitle("Excluir vídeo?")
-                    .setMessage(video.name)
-                    .setNegativeButton("Cancelar", null)
+            space(panel, 6)
+            panel.addView(actionButton("↗  COMPARTILHAR", true) {
+                try {
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "video/mp4"; putExtra(Intent.EXTRA_STREAM, video.uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(Intent.createChooser(send, "Compartilhar vídeo"))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Não foi possível compartilhar este vídeo.", Toast.LENGTH_SHORT).show()
+                }
+            })
+            space(panel, 6)
+            panel.addView(actionButton("EXCLUIR VÍDEO", true) {
+                AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK).setTitle("Excluir vídeo?")
+                    .setMessage(video.name).setNegativeButton("Cancelar", null)
                     .setPositiveButton("Excluir") { _, _ ->
                         try {
                             contentResolver.delete(video.uri, null, null)
-                            Toast.makeText(
-                                this,
-                                "Vídeo excluído.",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            Toast.makeText(this, "Vídeo excluído.", Toast.LENGTH_SHORT).show()
                             showVideos()
-                        } catch (e: Exception) {
-                            Toast.makeText(
-                                this,
-                                "Não foi possível excluir o vídeo.",
-                                Toast.LENGTH_LONG
-                            ).show()
+                        } catch (_: Exception) {
+                            Toast.makeText(this, "Não foi possível excluir.", Toast.LENGTH_LONG).show()
                         }
-                    }
-                    .show()
+                    }.show()
             })
-
-            val params = LinearLayout.LayoutParams(-1, -2)
-            params.bottomMargin = 14
-            root.addView(panel, params)
+            val lp = LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = 12
+            root.addView(panel, lp)
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-
-        if (currentPage == "Seus Vídeos") {
-            showVideos()
-        } else if (currentPage == "home") {
-            Handler(Looper.getMainLooper()).postDelayed({
-                if (!isFinishing && currentPage == "home") {
-                    showHome()
-                }
-            }, 1200)
-        }
+    private fun showAbout() {
+        startPage("about", "Sobre o aplicativo")
+        val panel = card(); root.addView(panel)
+        panel.addView(label("SAKANO FF 3.0", 22f, white, true))
+        space(panel, 8)
+        panel.addView(label("Gravador de tela para Android, com biblioteca local, configurações de captura e controles durante a gravação.", 13f, muted))
+        space(root, 12)
+        root.addView(label("Recursos comerciais, planos e pagamentos não estão ativados nesta versão. A base está organizada para futuras expansões.", 12f, muted))
     }
 }
