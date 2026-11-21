@@ -3,7 +3,6 @@ package com.sakano.ff
 import android.Manifest
 import android.app.*
 import android.content.*
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -205,20 +204,6 @@ class MainActivity : Activity() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(install)
-    }
-
-    @Deprecated("Deprecated in Android API, kept for compatibility with Android 8+ installer permission flow")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 4102) {
-            val uri = pendingInstallUri
-            pendingInstallUri = null
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
-                if (uri != null) openInstaller(uri)
-            } else {
-                Toast.makeText(this, "A permissão de instalação não foi concedida.", Toast.LENGTH_LONG).show()
-            }
-        }
     }
 
     override fun onResume() {
@@ -521,6 +506,16 @@ class MainActivity : Activity() {
     @Deprecated("Activity result compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 4102) {
+            val uri = pendingInstallUri
+            pendingInstallUri = null
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()) {
+                if (uri != null) openInstaller(uri)
+            } else {
+                Toast.makeText(this, "A permissão de instalação não foi concedida.", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         if (requestCode != 101) return
         if (resultCode == RESULT_OK && data != null) {
             val serviceIntent = Intent(this, RecordingService::class.java).apply {
