@@ -31,6 +31,7 @@ class InternalAudioCapture(
     private var videoThread: Thread? = null
     private var audioThread: Thread? = null
     private var audioPtsUs = 0L
+    private var audioPtsInitialized = false
     @Volatile private var failure: String? = null
 
     fun prepare(): Surface {
@@ -61,16 +62,17 @@ class InternalAudioCapture(
         }
 
         val config = AudioPlaybackCaptureConfiguration.Builder(projection)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME)
+            // Playback capture supports media/game usages. UNKNOWN is not a
+            // reliable selector and can leave capture with an empty match set.
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+            .addMatchingUsage(AudioAttributes.USAGE_GAME)
             .build()
         val minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT)
         check(minBuffer > 0) { "O Android não disponibilizou entrada para captura de áudio interno." }
         audioRecord = AudioRecord.Builder()
             .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(SAMPLE_RATE).setChannelMask(AudioFormat.CHANNEL_IN_STEREO).build())
-            .setBufferSizeInBytes(maxOf(minBuffer * 2, 16 * 1024))
+            .setBufferSizeInBytes(maxOf(minBuffer * 4, 32 * 1024))
             .setAudioPlaybackCaptureConfig(config)
             .build()
         check(audioRecord?.state == AudioRecord.STATE_INITIALIZED) { "Não foi possível inicializar a captura de áudio interno." }
@@ -152,11 +154,20 @@ class InternalAudioCapture(
                     if (inputIndex >= 0) {
                         val input = codec.getInputBuffer(inputIndex)!!
                         input.clear()
-                        val samples = minOf(read, input.remaining() / 2)
+                        // AudioRecord returns interleaved stereo SHORT samples.
+                        // PTS advances by frames (L+R), not by individual shorts.
+                        val samples = minOf(read, input.remaining() / 2).let { it - (it % CHANNELS) }
+                        val frames = samples / CHANNELS
                         val bytes = samples * 2
                         input.asShortBuffer().put(pcm, 0, samples)
+                        if (!audioPtsInitialized) {
+                            // Surface-input video timestamps use the monotonic clock;
+                            // start audio on the same clock so both tracks stay aligned.
+                            audioPtsUs = System.nanoTime() / 1_000L
+                            audioPtsInitialized = true
+                        }
                         val pts = audioPtsUs
-                        audioPtsUs += (samples.toLong() * 1_000_000L) / SAMPLE_RATE
+                        audioPtsUs += (frames.toLong() * 1_000_000L) / SAMPLE_RATE
                         codec.queueInputBuffer(inputIndex, 0, bytes, pts, 0)
                     }
                 } else if (read < 0 && running.get()) {
@@ -216,7 +227,9 @@ class InternalAudioCapture(
     }
 
     companion object {
-        private const val SAMPLE_RATE = 44100
+        // 48 kHz is the native playback rate on most Android devices and
+        // avoids unnecessary resampling for YouTube/media playback.
+        private const val SAMPLE_RATE = 48000
         private const val CHANNELS = 2
     }
 }
