@@ -76,7 +76,7 @@ class MainActivity : Activity() {
         checkForRequiredUpdate()
     }
 
-    private fun checkForRequiredUpdate() {
+    private fun checkForRequiredUpdate(manual: Boolean = false) {
         showUpdateChecking()
         Thread {
             try {
@@ -98,12 +98,27 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     val currentName = packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
                     if (isVersionNewer(tag.removePrefix("v"), currentName) && !apkUrl.isNullOrBlank()) showRequiredUpdate(tag.removePrefix("v"), apkUrl!!)
-                    else showHome()
+                    else if (manual) showUpdates("Seu aplicativo já está na versão mais recente.") else showHome()
                 }
             } catch (_: Exception) {
-                runOnUiThread { showHome() }
+                runOnUiThread { if (manual) showUpdates("Não foi possível consultar o GitHub. Verifique sua internet e tente novamente.") else showHome() }
             }
         }.start()
+    }
+
+    private fun showUpdates(message: String = "Verifique se existe uma nova versão disponível.") {
+        startPage("updates", "Atualizações")
+        val panel = card()
+        panel.addView(label("SAKANO FF", 11f, red, true))
+        space(panel, 8)
+        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "4.0.1"
+        panel.addView(label("Versão instalada: $version", 17f, white, true))
+        space(panel, 10)
+        panel.addView(label(message, 13f, muted))
+        space(panel, 18)
+        panel.addView(actionButton("VERIFICAR ATUALIZAÇÕES") { checkForRequiredUpdate(manual = true) }, LinearLayout.LayoutParams(-1, -2))
+        root.addView(panel, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 14 })
+        root.addView(label("As atualizações são baixadas das Releases oficiais do Sakano FF. A instalação é confirmada pelo Android.", 12f, muted))
     }
 
     private fun isVersionNewer(remote: String, local: String): Boolean {
@@ -306,7 +321,8 @@ class MainActivity : Activity() {
             "⌂   Início",
             "▣   Biblioteca",
             "⚙   Ajustes de gravação",
-            "ⓘ   Sobre o Sakano FF"
+            "ⓘ   Sobre o Sakano FF",
+            "⇧   Atualizações"
         )
         AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
             .setTitle("SAKANO FF")
@@ -316,6 +332,7 @@ class MainActivity : Activity() {
                     1 -> showVideos()
                     2 -> showSettings()
                     3 -> showAbout()
+                    4 -> showUpdates()
                 }
             }
             .setNegativeButton("Fechar", null)
@@ -735,7 +752,7 @@ class MainActivity : Activity() {
         startPage("about", "Sobre o Sakano FF")
         val hero = card().apply {
             setPadding(20, 22, 20, 22)
-            addView(label("SAKANO FF 3.9", 22f, white, true))
+            addView(label("SAKANO FF 4.0.1", 22f, white, true))
             space(this, 7)
             addView(label("GRAVADOR LEVE PARA CELULARES DE ENTRADA", 10f, red, true))
             space(this, 13)

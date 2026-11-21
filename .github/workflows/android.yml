@@ -61,6 +61,13 @@ jobs:
           test -n "$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           cp app/build/outputs/apk/release/app-release.apk "SakanoFF-$VERSION.apk"
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SakanoFF-${{ steps.release.outputs.version }}
+          path: SakanoFF-${{ steps.release.outputs.version }}.apk
+          if-no-files-found: error
+          retention-days: 30
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
