@@ -174,7 +174,7 @@ class MainActivity : Activity() {
         val panel = card()
         panel.addView(label("SAKANO FF", 11f, red, true))
         space(panel, 8)
-        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "4.0.4"
+        val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "4.0.7"
         panel.addView(label("Versão instalada: $version", 17f, white, true))
         space(panel, 10)
         panel.addView(label(message, 13f, muted))
